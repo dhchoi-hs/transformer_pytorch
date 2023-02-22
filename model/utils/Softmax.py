@@ -7,7 +7,7 @@ def softmax(x, dim=None):
 
 
 def log_softmax(x, dim=None):
-    return torch.log(softmax(x, dim))
+    return x - torch.log(torch.sum(torch.exp(x), dim=dim, keepdim=True))
 
 
 class Softmax:
@@ -17,7 +17,6 @@ class Softmax:
     def __call__(self, x):
         dim = -1 if self.dim is None else self.dim
         return softmax(x, dim)
-
 
 class LogSoftmax(Softmax):
     def __init__(self, dim=None) -> None:
