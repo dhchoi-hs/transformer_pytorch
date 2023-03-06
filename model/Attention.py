@@ -17,20 +17,16 @@ def attention(q, k, v, mask=None, ):
     return res
 
 
-def self_attention(x, mask=None):
-    return attention(x, x, x, mask=mask)
-
-
 class MultiHeadAttention(nn.Module):
-    def __init__(self, d_model, h, device=None) -> None:
+    def __init__(self, d_model, h) -> None:
         super().__init__()
         self.d_k = d_model // h
         self.h = h
 
-        self.w_q = nn.Linear(d_model, d_model, device=device)
-        self.w_k = nn.Linear(d_model, d_model, device=device)
-        self.w_v = nn.Linear(d_model, d_model, device=device)
-        self.w_o = nn.Linear(d_model, d_model, device=device)
+        self.w_q = nn.Linear(d_model, d_model)
+        self.w_k = nn.Linear(d_model, d_model)
+        self.w_v = nn.Linear(d_model, d_model)
+        self.w_o = nn.Linear(d_model, d_model)
     
     def forward(self, q, k, v, mask=None):
         nbatches = q.size(0)
@@ -51,12 +47,12 @@ class MultiHeadAttention(nn.Module):
 
 
 class MultiHeadAttention_SHORT(nn.Module):
-    def __init__(self, d_model, h, device=None) -> None:
+    def __init__(self, d_model, h) -> None:
         super().__init__()
         self.d_k = d_model // h
         self.h = h
 
-        self.linears = clones(nn.Linear(d_model, d_model, device=device), 4)
+        self.linears = clones(nn.Linear(d_model, d_model), 4)
     
     def forward(self, q, k, v, mask=None):
         nbatches = q.size(0)

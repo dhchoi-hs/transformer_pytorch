@@ -7,13 +7,13 @@ from utils.LayerNorm import LayerNorm
 
 
 class DecoderLayer(nn.Module):
-    def __init__(self, d_model: int, h: int, d_ff: int, dropout_p=0.1, device=None) -> None:
+    def __init__(self, d_model: int, h: int, d_ff: int, dropout_p=0.1) -> None:
         super().__init__()
         self.d_model = d_model
         self.sublayer_connections = clones(SublayerConnection(d_model, dropout_p), 3)
-        self.self_mha = MultiHeadAttention(d_model, h, device)
-        self.mha = MultiHeadAttention(d_model, h, device)
-        self.ff = FeedForward(d_model, d_ff, device)
+        self.self_mha = MultiHeadAttention(d_model, h)
+        self.mha = MultiHeadAttention(d_model, h)
+        self.ff = FeedForward(d_model, d_ff)
     
     def forward(self, x, m, src_mask=None, tgt_mask=None):
         x = self.sublayer_connections[0](x, lambda _x: self.self_mha(_x, _x, _x, mask=tgt_mask))

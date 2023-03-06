@@ -3,7 +3,7 @@ from torch import nn
 
 
 class Dropout(nn.Module):
-    def __init__(self, p=0.5, device=None) -> None:
+    def __init__(self, p=0.5) -> None:
         super().__init__()
 
         if p < 0 or p > 1:
@@ -11,11 +11,10 @@ class Dropout(nn.Module):
             raise ValueError
 
         self.p = p
-        self.device = device
             
     def forward(self, x):
         if self.training and self.p > 0:
-            dropout_mask = torch.zeros(x.size(), device=self.device).uniform_()
+            dropout_mask = torch.zeros(x.size()).uniform_()
             dropout_mask = dropout_mask >= self.p
             return x * dropout_mask / (1-self.p) if self.p != 1 else x * dropout_mask
         else:
