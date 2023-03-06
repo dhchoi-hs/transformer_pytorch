@@ -4,7 +4,7 @@ from utils.Dropout import Dropout
 
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, vocab_len, d_model=512, dropout=0.1, device=None) -> None:
+    def __init__(self, vocab_len, d_model=512, dropout=0.1) -> None:
         super().__init__()
 
         self.pe = torch.zeros([vocab_len, d_model], device=device, requires_grad=False)

@@ -17,6 +17,10 @@ def attention(q, k, v, mask=None, ):
     return res
 
 
+def self_attention(x, mask=None):
+    return attention(x, x, x, mask=mask)
+
+
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model, h, device=None) -> None:
         super().__init__()
