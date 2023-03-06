@@ -15,7 +15,7 @@ class TestLayerNorm(unittest.TestCase):
         pass
 
     def test_equal(self):
-        layerNorm = LayerNorm(self.test_shape)
+        layerNorm = LayerNorm(512)
         inp = torch.randn(self.test_shape)
         outp = layerNorm(inp)
         
