@@ -1,6 +1,6 @@
 import torch
 import unittest
-from Softmax import Softmax, LogSoftmax
+from model.utils.Softmax import Softmax, LogSoftmax
 
 
 class TestLayerNorm(unittest.TestCase):

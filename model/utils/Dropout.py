@@ -14,7 +14,7 @@ class Dropout(nn.Module):
             
     def forward(self, x):
         if self.training and self.p > 0:
-            dropout_mask = torch.zeros(x.size()).uniform_()
+            dropout_mask = torch.zeros(x.size(), device=x.device).uniform_()
             dropout_mask = dropout_mask >= self.p
             return x * dropout_mask / (1-self.p) if self.p != 1 else x * dropout_mask
         else:

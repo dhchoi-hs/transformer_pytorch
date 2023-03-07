@@ -1,6 +1,6 @@
 import unittest
 import torch
-from LayerNorm import LayerNorm
+from model.utils.LayerNorm import LayerNorm
 import numpy as np
 import math
 

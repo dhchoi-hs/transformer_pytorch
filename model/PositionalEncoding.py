@@ -19,7 +19,7 @@ class PositionalEncoding(nn.Module):
         self.dropout = Dropout(dropout)
     
     def forward(self, x):
-        x = x + self.pe[:x.size(1), ::]
+        x = x + self.pe.to(x.device)[:x.size(1), ::]
         return self.dropout(x)
 
 

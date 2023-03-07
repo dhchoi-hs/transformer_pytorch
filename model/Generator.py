@@ -1,12 +1,13 @@
 import torch
 from torch import nn
 from utils.Softmax import log_softmax
+from utils.Linear import Linear
 
 
 class Generator(nn.Module):
     def __init__(self, d_model, vocab) -> None:
         super().__init__()
-        self.lin = nn.Linear(d_model, vocab)
+        self.lin = Linear(d_model, vocab)
     
     def forward(self, x):
         return log_softmax(self.lin(x), dim=-1)
