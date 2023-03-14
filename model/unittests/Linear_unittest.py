@@ -6,7 +6,7 @@ from model.utils.Linear import Linear
 
 print(__name__)
 print(__file__)
-class TestLayerNorm(unittest.TestCase):
+class TestLinear(unittest.TestCase):
     in_feat = 10
     out_feat = 5
 

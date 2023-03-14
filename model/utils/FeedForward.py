@@ -7,8 +7,8 @@ class FeedForward(nn.Module):
         super().__init__()
         self.w1 = Linear(d_model, d_ff)
         self.w2 = Linear(d_ff, d_model)
-        
+
     def forward(self, x):
         x = self.w1(x)
-        x[x<0] = 0
+        x = x.masked_fill(x < 0, 0)  # ReLU
         return self.w2(x)
