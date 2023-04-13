@@ -4,9 +4,9 @@ from utils.LayerNorm import LayerNorm
 
 
 class SublayerConnection(nn.Module):
-    def __init__(self, size, dropout_p) -> None:
+    def __init__(self, features, dropout_p) -> None:
         super().__init__()
-        self.layer_normalizing = LayerNorm(size)
+        self.layer_normalizing = LayerNorm(features)
         self.dropout = Dropout(dropout_p)
     
     def forward(self, x, sublayer):

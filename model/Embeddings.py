@@ -3,10 +3,10 @@ from torch import nn
 
 
 class Embeddings(nn.Module):
-    def __init__(self, vocab_len, d_model=512, device=None) -> None:
+    def __init__(self, vocab_len, d_model=512) -> None:
         super().__init__()
         
-        self.table = nn.Parameter(torch.randn([vocab_len, d_model], device=device, requires_grad=True))
+        self.table = nn.Parameter(torch.randn([vocab_len, d_model], requires_grad=True))
         self.d_model = d_model
     
     def forward(self, x):
@@ -34,7 +34,8 @@ if __name__ == '__main__':
     data = [l+([pad_index]*(max_len-len(l))) for l in data]
     datas = torch.LongTensor(data[:20]).to(device=device)
 
-    embs = Embeddings(len(bpe_dict), device=device)
+    embs = Embeddings(len(bpe_dict))
+    embs.to(device=device)
     res = embs(datas)
 
     print(res.shape)

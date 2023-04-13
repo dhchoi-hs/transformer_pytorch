@@ -1,6 +1,6 @@
 import unittest
 import torch
-from LayerNorm import LayerNorm
+from model.utils.LayerNorm import LayerNorm
 import numpy as np
 import math
 
@@ -15,7 +15,7 @@ class TestLayerNorm(unittest.TestCase):
         pass
 
     def test_equal(self):
-        layerNorm = LayerNorm(self.test_shape)
+        layerNorm = LayerNorm(512)
         inp = torch.randn(self.test_shape)
         outp = layerNorm(inp)
         
