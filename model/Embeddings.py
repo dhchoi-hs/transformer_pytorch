@@ -1,16 +1,29 @@
 import torch
 from torch import nn
+from math import sqrt
 
 
 class Embeddings(nn.Module):
-    def __init__(self, vocab_len, d_model=512) -> None:
+    def __init__(self, vocab_len, d_model=512, padding_idx=0) -> None:
         super().__init__()
-        
-        self.table = nn.Parameter(torch.randn([vocab_len, d_model], requires_grad=True))
         self.d_model = d_model
-    
+        self.padding_idx = padding_idx
+        
+        self.table = nn.Parameter(torch.randn([vocab_len-1, d_model]), requires_grad=True)
+        # self.padding_emb = nn.Parameter(torch.zeros([1, self.d_model]), requires_grad=False)
+        self.padding_emb_to_zero()
+
+    def padding_emb_to_zero(self):
+        self.table.data[self.padding_idx] = torch.zeros(self.d_model)
+
+    def padding_emb_grad_to_zero(self):
+        self.table[self.padding_idx].grad = torch.zeros(self.d_model)
+
     def forward(self, x):
-        return self.table[x] * (self.d_model**(1/2))
+        if self.table[self.padding_idx].data.any().item() is True:
+            self.padding_emb_to_zero()
+        # table = torch.cat([self.table[:self.padding_idx], self.padding_emb, self.table[self.padding_idx:]])
+        return self.table[x] * sqrt(self.d_model)
 
 
 if __name__ == '__main__':
@@ -34,8 +47,9 @@ if __name__ == '__main__':
     data = [l+([pad_index]*(max_len-len(l))) for l in data]
     datas = torch.LongTensor(data[:20]).to(device=device)
 
-    embs = Embeddings(len(bpe_dict))
+    embs = Embeddings(len(bpe_dict), padding_idx=pad_index)
     embs.to(device=device)
+    res = embs(datas)
     res = embs(datas)
 
     print(res.shape)

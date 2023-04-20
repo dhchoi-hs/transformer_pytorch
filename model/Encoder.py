@@ -1,13 +1,13 @@
 from torch import nn
-from utils.SublayerConnection import SublayerConnection
-from utils.clone_layers import clones
-from utils.FeedForward import FeedForward
-from Attention import MultiHeadAttention
-from utils.LayerNorm import LayerNorm
+from model.utils.SublayerConnection import SublayerConnection
+from model.utils.clone_layers import clones
+from model.utils.FeedForward import FeedForward
+from model.Attention import MultiHeadAttention
+from model.utils.LayerNorm import LayerNorm
 
 
 class EncoderLayer(nn.Module):
-    def __init__(self, d_model: int, h: int, d_ff: int, mask=None, dropout_p: float=0.1) -> None:
+    def __init__(self, d_model: int, h: int, d_ff: int, dropout_p: float=0.1) -> None:
         super().__init__()
         self.d_model = d_model
         self.sublayer_connections = clones(SublayerConnection(d_model, dropout_p=dropout_p), 2)

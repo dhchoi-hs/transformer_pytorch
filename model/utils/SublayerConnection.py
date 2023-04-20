@@ -1,6 +1,6 @@
 from torch import nn
-from utils.Dropout import Dropout
-from utils.LayerNorm import LayerNorm
+from model.utils.Dropout import Dropout
+from model.utils.LayerNorm import LayerNorm
 
 
 class SublayerConnection(nn.Module):

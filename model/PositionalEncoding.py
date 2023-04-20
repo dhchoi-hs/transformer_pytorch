@@ -1,13 +1,15 @@
 import torch
 from torch import nn
-from utils.Dropout import Dropout
+import os
+print(os.path.abspath(os.path.curdir))
+from model.utils.Dropout import Dropout
 
 
 class PositionalEncoding(nn.Module):
     def __init__(self, vocab_len, d_model=512, dropout=0.1) -> None:
         super().__init__()
 
-        self.pe = torch.zeros([vocab_len, d_model], requires_grad=False)
+        self.pe = torch.zeros([vocab_len, d_model])
 
         pe = torch.arange(0, vocab_len).type(torch.float32).unsqueeze(1)
         _2i = torch.arange(0, d_model, 2).type(torch.float32)
@@ -17,10 +19,10 @@ class PositionalEncoding(nn.Module):
         self.pe[:, 1::2] = torch.cos(data)
 
         self.dropout = Dropout(dropout)
+        self.register_buffer('pe1', self.pe)
     
     def forward(self, x):
-        x = x + self.pe.to(x.device)[:x.size(1), ::]
-        return self.dropout(x)
+        return self.dropout(x + self.pe1.to(x.device)[:x.size(-2), ::])
 
 
 if __name__ == '__main__':
@@ -32,6 +34,7 @@ if __name__ == '__main__':
 
     x = pe(torch.randn([3,12,512]))
     print(x)
+    print(pe.state_dict())
 
     # data = pe.pe.cpu().detach().numpy()
 

@@ -1,5 +1,5 @@
 from torch import nn
-from utils.Linear import Linear
+from model.utils.Linear import Linear
 
 
 class FeedForward(nn.Module):
