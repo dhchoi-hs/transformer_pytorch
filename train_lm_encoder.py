@@ -1,5 +1,7 @@
 import sys
 import os
+import glob
+import re
 import argparse
 import shutil
 import json
@@ -62,7 +64,7 @@ def valid_epoch(dataset, model, criterion, sleep=None, device=None):
         y = y.to(device)
 
         pad_mask = (x == model.padding_idx)
-        outputs = model(x, pad_mask=pad_mask)
+        outputs = model(x, pad_mask)
         y_masked = y.bool()
         outputs_only_masked = outputs[y_masked]
         y_only_masked = y[y_masked]
@@ -82,6 +84,22 @@ def valid_epoch(dataset, model, criterion, sleep=None, device=None):
 
     return running_loss / total_step, acc
 
+
+def save_model(model_dir, model_files, keep_last_models):
+    model_file = os.path.join(model_dir, f'model_{i+1}.pt')
+    torch.save(model.state_dict(), model_file)
+    model_files.append(model_file)
+    if len(model_files) > keep_last_models:
+        for m in model_files[:-keep_last_models]:
+            try:
+                os.remove(m)
+            except Exception as e:
+                print(f'[WARNING] Deleting model file fails. {m}, {e}')
+        model_files = model_files[-keep_last_models:]
+    
+    return model_files
+
+
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('-c', '--config', type=str, default='configs/config_ln_encoder.yaml')
@@ -98,6 +116,7 @@ if __name__ == '__main__':
     resume = args.resume
 
     model_dir = config['model_dir']
+    keep_last_models = config['keep_last_models']
     cuda_index = config['cuda_index']
     epochs = config['epochs']
     batch_size = config['batch_size']
@@ -108,25 +127,27 @@ if __name__ == '__main__':
     n_layers = config['n_layers']
     p_dropout = config['p_dropout']
     seq_len = config['seq_len']
-    vocab_start_token_id = config['vocab_start_token_id']
     vocab_file = config['vocab_file']
-    train_dataset_files = config['train_dataset']['files']
-    valid_dataset_files = config['valid_dataset']['files']
+    vocab_start_token_id = config['vocab_start_token_id']
+    train_dataset_files = config['train_dataset_files']
+    valid_dataset_files = config['valid_dataset_files']
+
+    assert keep_last_models > 0, 'keep_last_models config value must be greater than 0.'
 
     with open(vocab_file, 'rt') as f:
         vocab = json.load(f)
 
     if os.path.exists(model_dir):
         if not resume:
-            print(f'[INFO] model directory ({model_dir}) already exists.')
+            print(f'[ERROR] model directory ({model_dir}) already exists.')
             sys.exit()
     else:
         if resume:
-            print(f'[INFO] model directory ({model_dir}) for resume not exists.')
+            print(f'[ERROR] model directory ({model_dir}) for resume not exists.')
             sys.exit()
-        os.makedirs(model_dir, exist_ok=True)
-        shutil.copy(args.config, model_dir)
-    
+        else:
+            os.makedirs(model_dir, exist_ok=True)
+            shutil.copy(args.config, model_dir)
 
     train_dataloader = mlm_dataloader(train_dataset_files, vocab, vocab_start_token_id, seq_len, batch_size)
     valid_dataloader = mlm_dataloader(valid_dataset_files, vocab, vocab_start_token_id, seq_len, batch_size)
@@ -135,9 +156,6 @@ if __name__ == '__main__':
 
     model = lm_encoder(d_model, h, ff, n_layers, len(vocab), padding_idx=vocab['__PAD__'], dropout_p=p_dropout, use_torch_module=True)
     model.to(device=device)
-    if resume:
-        checkpoint = torch.load(os.path.join(model_dir, 'model_checkpoint.pt'))
-        model.load_state_dict(checkpoint['model_state_dict'])
 
     separator = '='*80
     print(separator)
@@ -147,53 +165,75 @@ if __name__ == '__main__':
         if params.dim() > 1:
             torch.nn.init.xavier_uniform_(params)
         num_params += params.numel()
-    print(separator)
-    print(model)
-    print(separator)
-    print(f'Number of parameters: {num_params:,} ')
-    print(separator)
+    print(
+        f"{separator}\n"
+        f"{model}\n"
+        f"{separator}\n"
+        f"Number of parameters: {num_params:,}\n"
+        f"{separator}\n"
+    )
+
+    sw = SummaryWriter(os.path.join(model_dir, 'logs'))
 
     loss_fn = torch.nn.CrossEntropyLoss()
     loss_fn.to(device=device)
     optim = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
     if resume:
-        optim.load_state_dict(checkpoint('optimizer_state_dict'))
+        checkpoint = torch.load(os.path.join(model_dir, 'checkpoint.pt'))
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optim.load_state_dict(checkpoint['optimizer_state_dict'])
 
-    sw = SummaryWriter(os.path.join(model_dir, 'logs'))
-    dataloader = train_dataloader or valid_dataloader
-    sw.add_graph(model, dataloader.dataset[0][0].to(device))
-
-    model.train()
+        def sort_model_files(x):
+            model_epoch = re.search(r'(?<=^model_)\d+(?=.pt$)', os.path.basename(x))
+            return 0 if not model_epoch else int(model_epoch.group())
+        
+        model_files = sorted(glob.glob(os.path.join(model_dir, 'model_*.pt')), key=sort_model_files)
+        epoch = checkpoint['epoch']
+    else:
+        dataloader = train_dataloader or valid_dataloader
+        sw.add_graph(model, dataloader.dataset[0][0].to(device))
+        model_files = []
+        epoch = 0
 
     sleep_per_step = .01
     train_loss, train_acc, val_loss, val_acc = 0, 0, 0, 0
-    epoch = 0 if not resume else checkpoint['epoch']
+
     try:
         for i in range(epoch, epochs):
             t1 = time.time()
+            training_sec_per_epoch = {}
             if train_dataloader is not None:
-                if not model.training:
-                    model.train()
+                training_started = time.time()
+                model.train()
                 train_loss, train_acc = train_epoch(train_dataloader, model, loss_fn, optim, sleep_per_step, device)
+                training_sec_per_epoch['train'] = time.time() - training_started
                 sw.add_scalar('Loss/train', train_loss, i+1)
                 sw.add_scalar('Acc/train', train_acc, i+1)
 
             if valid_dataloader is not None:
+                valid_started = time.time()
                 model.eval()
                 with torch.no_grad():
                     val_loss, val_acc = valid_epoch(valid_dataloader, model, loss_fn, sleep_per_step, device)
+                training_sec_per_epoch['valid'] = time.time() - valid_started
                 sw.add_scalar('Loss/validation', val_loss, i+1)
                 sw.add_scalar('Acc/validation', val_acc, i+1)
+
+            sw.add_scalars('elapsed_sec_per_epoch', training_sec_per_epoch, i+1)
+            model_files = save_model(model_dir, model_files, keep_last_models)
             print(f'epoch {i+1}. train_loss: {round(train_loss,4):>8}, train_acc: {round(train_acc, 4):>8}, val_loss: {round(val_loss,4):>8}, val_acc: {round(val_acc, 4):>8}, elapsed: {round(time.time()-t1,3)}s')
     except KeyboardInterrupt:
         print("Training stopped.")
+    except Exception as e:
+        print(f'Exception occured during training. {e}')
     
-    torch.save(model.state_dict(), os.path.join(model_dir, f'model_epoch{i}.pt'))
     torch.save(
         {
             'epoch': i,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optim.state_dict()
         },
-        os.path.join(model_dir, 'model_checkpoint.pt')
+        os.path.join(model_dir, 'checkpoint.pt')
     )
+    sw.close()

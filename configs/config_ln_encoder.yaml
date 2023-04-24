@@ -1,4 +1,5 @@
 model_dir: outputs/model1
+keep_last_models: 5
 cuda_index: 0
 epochs: 1000
 batch_size: 128
@@ -7,15 +8,13 @@ d_model: 256
 h: 4
 ff: 1024
 n_layers: 1
-p_dropout: 0.
+p_dropout: 0.1
 seq_len: 256
 vocab_file: /home/dhchoi/projects/transformer_pytorch/kypark_dataset/bpe_dict/BPE_char_dict.json
 vocab_start_token_id: 6
-train_dataset:
-  files:
-    - /home/dhchoi/projects/transformer_pytorch/kypark_dataset/encoded_corpus_files/BPE_char_en_tr_090.txt
-    - /home/dhchoi/projects/transformer_pytorch/kypark_dataset/encoded_corpus_files/BPE_char_ko_tr_090.txt
-valid_dataset:
-  files:
-    - /home/dhchoi/projects/transformer_pytorch/kypark_dataset/encoded_corpus_files/BPE_char_en_va_010.txt
-    - /home/dhchoi/projects/transformer_pytorch/kypark_dataset/encoded_corpus_files/BPE_char_ko_va_010.txt
+train_dataset_files:
+  - /home/dhchoi/projects/transformer_pytorch/kypark_dataset/encoded_corpus_files/BPE_char_en_tr_090.txt
+  - /home/dhchoi/projects/transformer_pytorch/kypark_dataset/encoded_corpus_files/BPE_char_ko_tr_090.txt
+valid_dataset_files:
+  - /home/dhchoi/projects/transformer_pytorch/kypark_dataset/encoded_corpus_files/BPE_char_en_va_010.txt
+  - /home/dhchoi/projects/transformer_pytorch/kypark_dataset/encoded_corpus_files/BPE_char_ko_va_010.txt
