@@ -20,12 +20,11 @@ class lm_encoder(nn.Module):
             self.emb = nn.Embedding(n_vocabs, d_model, padding_idx)
             self.encoder = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model, h, ff, dropout_p, batch_first=True), n_layers, enable_nested_tensor=False)
             self.lin = nn.Linear(d_model, n_vocabs)
-        # self.softmax = nn.Softmax(dim=-1)
     
     def forward(self, x, src_mask=None,):
         x = self.emb(x)
         x = self.pe(x)
-        x = self.encoder(x, src_key_padding_mask=src_mask)
+        x = self.encoder(x, src_mask)
 
         return x
         # x = self.emb(x)

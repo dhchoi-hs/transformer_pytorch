@@ -1,4 +1,4 @@
-model_dir: outputs/model1
+model_dir:  # default directory: output/model_{date}
 keep_last_models: 5
 cuda_index: 0
 epochs: 1000

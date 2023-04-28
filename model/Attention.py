@@ -8,7 +8,7 @@ from model.utils.Linear import Linear
 
 def attention(q, k, v, mask=None, ):
     d_k = k.size(-1)
-    res = q @ k.transpose(-2, -1) / math.sqrt(d_k)
+    res = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)
     if mask is not None:
         res.masked_fill_(mask == 0, -torch.inf)
     res = softmax(res, -1)

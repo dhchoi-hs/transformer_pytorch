@@ -50,7 +50,7 @@ class MLMdataset(Dataset):
     def prepare_mlm_new(self):
         seqs = []
         labels = []
-        for _seq in tqdm(self.dataset[:12800]):
+        for _seq in tqdm(self.dataset):
             length = len(_seq)
             seq = torch.LongTensor(_seq + [self.vocab['__PAD__']]*(self.max_sentence-length))
             mask_len = int(length*0.15)

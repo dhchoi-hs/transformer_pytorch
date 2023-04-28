@@ -3,11 +3,19 @@ import torch
 
 def softmax(x, dim=None):
     dim = -1 if dim is None else dim
-    return torch.exp(x) / torch.sum(torch.exp(x), dim=dim, keepdim=True)
+    return x.softmax(dim)
+    # this function has problem divide by zero on backward.
+    xe = torch.exp(x - abs(x.max(dim,keepdim=True)[0]))
+    s = torch.sum(xe, dim=dim, keepdim=True)
+    sf = xe / s
+
+    return sf
 
 
 def log_softmax(x, dim=None):
-    return x - torch.log(torch.sum(torch.exp(x), dim=dim, keepdim=True))
+    dim = -1 if dim is None else dim
+    x_off = x-abs(x.max(dim,keepdim=True)[0])
+    return x_off - torch.log(torch.sum(torch.exp(x_off), dim=dim, keepdim=True))
 
 
 class Softmax:
@@ -18,7 +26,7 @@ class Softmax:
         dim = -1 if self.dim is None else self.dim
         return softmax(x, dim)
 
-class LogSoftmax(Softmax):
+class LogSoftmax:
     def __init__(self, dim=None) -> None:
         super().__init__(dim)
     

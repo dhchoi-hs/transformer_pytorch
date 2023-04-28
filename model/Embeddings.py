@@ -10,20 +10,11 @@ class Embeddings(nn.Module):
         self.padding_idx = padding_idx
         
         self.table = nn.Parameter(torch.randn([vocab_len-1, d_model]), requires_grad=True)
-        # self.padding_emb = nn.Parameter(torch.zeros([1, self.d_model]), requires_grad=False)
-        self.padding_emb_to_zero()
-
-    def padding_emb_to_zero(self):
-        self.table.data[self.padding_idx] = torch.zeros(self.d_model)
-
-    def padding_emb_grad_to_zero(self):
-        self.table[self.padding_idx].grad = torch.zeros(self.d_model)
-
+        self.register_buffer('padding_emb', torch.zeros([1, self.d_model], requires_grad=False))
+    
     def forward(self, x):
-        if self.table[self.padding_idx].data.any().item() is True:
-            self.padding_emb_to_zero()
-        # table = torch.cat([self.table[:self.padding_idx], self.padding_emb, self.table[self.padding_idx:]])
-        return self.table[x] * sqrt(self.d_model)
+        table = torch.cat([self.table[:self.padding_idx], self.padding_emb, self.table[self.padding_idx:]])
+        return table[x] * sqrt(self.d_model)
 
 
 if __name__ == '__main__':

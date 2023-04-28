@@ -13,72 +13,48 @@ from torch.utils.tensorboard import SummaryWriter
 from dataset_loader.mlm_dataset import mlm_dataloader
 from models.lm_encoder import lm_encoder
 from model.utils.get_torch_device import get_torch_device
+from datetime import datetime
 
 
 torch.manual_seed(7)
 
-
-def train_epoch(dataset, model, criterion, optim, sleep=None, device=None):
+def run_epoch(dataset, model, criterion, optim=None, train_mode=True, sleep=None, device=None):
+    if train_mode:
+        assert optim, 'optimizer must be set in training mode.'
     running_loss = 0.
     total_step = len(dataset)
     pbar = tqdm(dataset)
+    mode = 'train' if train_mode else 'valid'
     for data in pbar:
         x, y = data
         x = x.to(device)
         y = y.to(device)
         
-        optim.zero_grad()
+        if train_mode:
+            optim.zero_grad()
 
-        pad_mask = (x == model.padding_idx)
-        outputs = model(x, pad_mask)
+        pad_mask = (x != model.padding_idx).unsqueeze(-2).unsqueeze(-2)
+        output = model(x, pad_mask)
+
         y_masked = y.bool()
-        outputs_only_masked = outputs[y_masked]
-        y_only_masked = y[y_masked]
-        outputs_only_masked = model.lin(outputs_only_masked)
-
-        loss = criterion(outputs_only_masked, y_only_masked)
+        output_only_masked = output[y_masked]
         
-        loss.backward()
+        y_only_masked = y[y_masked]
+        output_only_masked = model.lin(output_only_masked)
 
-        optim.step()
+        loss = criterion(output_only_masked, y_only_masked)
+
+        if train_mode:
+            loss.backward()
+            optim.step()
+
         item = loss.item()
         running_loss += item
 
-        output_labels = outputs_only_masked.argmax(dim=-1)
+        output_labels = output_only_masked.argmax(dim=-1)
         a = torch.count_nonzero(output_labels == y_only_masked)
         acc = a.item() / y_only_masked.size(0)
-        pbar.set_description(f'train loss: {round(item, 4):>8} acc: {round(acc, 4):>8}')
-        if sleep:
-            time.sleep(sleep)
-
-    return running_loss / total_step, acc
-
-
-def valid_epoch(dataset, model, criterion, sleep=None, device=None):
-    running_loss = 0.
-    total_step = len(dataset)
-    pbar = tqdm(dataset)
-    for data in pbar:
-        x, y = data
-        x = x.to(device)
-        y = y.to(device)
-
-        pad_mask = (x == model.padding_idx)
-        outputs = model(x, pad_mask)
-        y_masked = y.bool()
-        outputs_only_masked = outputs[y_masked]
-        y_only_masked = y[y_masked]
-        outputs_only_masked = model.lin(outputs_only_masked)
-
-        loss = criterion(outputs_only_masked, y_only_masked)
-        
-        item = loss.item()
-        running_loss += item
-
-        output_labels = outputs_only_masked.argmax(dim=-1)
-        a = torch.count_nonzero(output_labels == y_only_masked)
-        acc = a.item() / y_only_masked.size(0)
-        pbar.set_description(f'valid loss: {round(item, 4):>8} acc: {round(acc, 4):>8}')
+        pbar.set_description(f'{mode} loss: {round(item, 4):>8} acc: {round(acc, 4):>8}')
         if sleep:
             time.sleep(sleep)
 
@@ -116,6 +92,9 @@ if __name__ == '__main__':
     resume = args.resume
 
     model_dir = config['model_dir']
+    if not model_dir:
+        model_dir = 'output/model_{}'.format(datetime.now().strftime('%Y%m%d%H%M%S'))
+
     keep_last_models = config['keep_last_models']
     cuda_index = config['cuda_index']
     epochs = config['epochs']
@@ -151,10 +130,12 @@ if __name__ == '__main__':
 
     train_dataloader = mlm_dataloader(train_dataset_files, vocab, vocab_start_token_id, seq_len, batch_size)
     valid_dataloader = mlm_dataloader(valid_dataset_files, vocab, vocab_start_token_id, seq_len, batch_size)
-
     device = get_torch_device(cuda_index)
 
-    model = lm_encoder(d_model, h, ff, n_layers, len(vocab), padding_idx=vocab['__PAD__'], dropout_p=p_dropout, use_torch_module=True)
+    model = lm_encoder(
+        d_model, h, ff, n_layers, len(vocab), padding_idx=vocab['__PAD__'],
+        dropout_p=p_dropout, use_torch_module=False
+    )
     model.to(device=device)
 
     separator = '='*80
@@ -184,11 +165,11 @@ if __name__ == '__main__':
         model.load_state_dict(checkpoint['model_state_dict'])
         optim.load_state_dict(checkpoint['optimizer_state_dict'])
 
-        def sort_model_files(x):
+        def get_epoch_of_model_file(x):
             model_epoch = re.search(r'(?<=^model_)\d+(?=.pt$)', os.path.basename(x))
             return 0 if not model_epoch else int(model_epoch.group())
         
-        model_files = sorted(glob.glob(os.path.join(model_dir, 'model_*.pt')), key=sort_model_files)
+        model_files = sorted(glob.glob(os.path.join(model_dir, 'model_*.pt')), key=get_epoch_of_model_file)
         epoch = checkpoint['epoch']
     else:
         dataloader = train_dataloader or valid_dataloader
@@ -196,7 +177,7 @@ if __name__ == '__main__':
         model_files = []
         epoch = 0
 
-    sleep_per_step = .01
+    sleep_per_step = .00
     train_loss, train_acc, val_loss, val_acc = 0, 0, 0, 0
 
     try:
@@ -206,7 +187,7 @@ if __name__ == '__main__':
             if train_dataloader is not None:
                 training_started = time.time()
                 model.train()
-                train_loss, train_acc = train_epoch(train_dataloader, model, loss_fn, optim, sleep_per_step, device)
+                train_loss, train_acc = run_epoch(train_dataloader, model, loss_fn, optim, True, sleep_per_step, device)
                 training_sec_per_epoch['train'] = time.time() - training_started
                 sw.add_scalar('Loss/train', train_loss, i+1)
                 sw.add_scalar('Acc/train', train_acc, i+1)
@@ -215,7 +196,7 @@ if __name__ == '__main__':
                 valid_started = time.time()
                 model.eval()
                 with torch.no_grad():
-                    val_loss, val_acc = valid_epoch(valid_dataloader, model, loss_fn, sleep_per_step, device)
+                    val_loss, val_acc = run_epoch(valid_dataloader, model, loss_fn, None, False, sleep_per_step, device)
                 training_sec_per_epoch['valid'] = time.time() - valid_started
                 sw.add_scalar('Loss/validation', val_loss, i+1)
                 sw.add_scalar('Acc/validation', val_acc, i+1)
@@ -224,9 +205,9 @@ if __name__ == '__main__':
             model_files = save_model(model_dir, model_files, keep_last_models)
             print(f'epoch {i+1}. train_loss: {round(train_loss,4):>8}, train_acc: {round(train_acc, 4):>8}, val_loss: {round(val_loss,4):>8}, val_acc: {round(val_acc, 4):>8}, elapsed: {round(time.time()-t1,3)}s')
     except KeyboardInterrupt:
-        print("Training stopped.")
+        print("[INFO] Training stopped.")
     except Exception as e:
-        print(f'Exception occured during training. {e}')
+        print(f'[ERROR] Exception occured during training. {e}')
     
     torch.save(
         {

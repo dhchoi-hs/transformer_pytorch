@@ -9,5 +9,5 @@ class Linear(nn.Module):
         self.bias = nn.Parameter(torch.randn([out_feature,]))
     
     def forward(self, x):
-        return x @ self.weights + self.bias
+        return torch.matmul(x, self.weights) + self.bias
 
