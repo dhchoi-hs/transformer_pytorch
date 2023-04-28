@@ -6,6 +6,7 @@ import argparse
 import shutil
 import json
 import time
+from datetime import datetime
 import yaml
 from tqdm import tqdm
 import torch
@@ -13,10 +14,10 @@ from torch.utils.tensorboard import SummaryWriter
 from dataset_loader.mlm_dataset import mlm_dataloader
 from models.lm_encoder import lm_encoder
 from model.utils.get_torch_device import get_torch_device
-from datetime import datetime
 
 
 torch.manual_seed(7)
+
 
 def run_epoch(dataset, model, criterion, optim=None, train_mode=True, sleep=None, device=None):
     if train_mode:
@@ -66,11 +67,11 @@ def save_model(model_dir, model_files, keep_last_models):
     torch.save(model.state_dict(), model_file)
     model_files.append(model_file)
     if len(model_files) > keep_last_models:
-        for m in model_files[:-keep_last_models]:
+        for model_file in model_files[:-keep_last_models]:
             try:
-                os.remove(m)
+                os.remove(model_file)
             except Exception as e:
-                print(f'[WARNING] Deleting model file fails. {m}, {e}')
+                print(f'[WARNING] Deleting model file fails. {model_file}, {e}')
         model_files = model_files[-keep_last_models:]
     
     return model_files
@@ -93,7 +94,7 @@ if __name__ == '__main__':
 
     model_dir = config['model_dir']
     if not model_dir:
-        model_dir = 'output/model_{}'.format(datetime.now().strftime('%Y%m%d%H%M%S'))
+        model_dir = f'output/model_{datetime.now().strftime("%Y%m%d%H%M%S")}'
 
     keep_last_models = config['keep_last_models']
     cuda_index = config['cuda_index']
@@ -177,7 +178,7 @@ if __name__ == '__main__':
         model_files = []
         epoch = 0
 
-    sleep_per_step = .00
+    sleep_between_step = .00
     train_loss, train_acc, val_loss, val_acc = 0, 0, 0, 0
 
     try:
@@ -187,7 +188,7 @@ if __name__ == '__main__':
             if train_dataloader is not None:
                 training_started = time.time()
                 model.train()
-                train_loss, train_acc = run_epoch(train_dataloader, model, loss_fn, optim, True, sleep_per_step, device)
+                train_loss, train_acc = run_epoch(train_dataloader, model, loss_fn, optim, True, sleep_between_step, device)
                 training_sec_per_epoch['train'] = time.time() - training_started
                 sw.add_scalar('Loss/train', train_loss, i+1)
                 sw.add_scalar('Acc/train', train_acc, i+1)
@@ -196,7 +197,7 @@ if __name__ == '__main__':
                 valid_started = time.time()
                 model.eval()
                 with torch.no_grad():
-                    val_loss, val_acc = run_epoch(valid_dataloader, model, loss_fn, None, False, sleep_per_step, device)
+                    val_loss, val_acc = run_epoch(valid_dataloader, model, loss_fn, None, False, sleep_between_step, device)
                 training_sec_per_epoch['valid'] = time.time() - valid_started
                 sw.add_scalar('Loss/validation', val_loss, i+1)
                 sw.add_scalar('Acc/validation', val_acc, i+1)
