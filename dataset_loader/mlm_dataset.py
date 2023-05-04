@@ -9,7 +9,6 @@ torch.manual_seed(7)
 class MLMdataset(Dataset):
     def __init__(self, dataset_files, vocab, start_index, max_sentence):
         super().__init__()
-        print('Loading dataset...')
         self.dataset = []
         for dataset_file in dataset_files:
             with open(dataset_file, 'rt') as f:

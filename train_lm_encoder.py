@@ -14,6 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 from dataset_loader.mlm_dataset import mlm_dataloader
 from models.lm_encoder import lm_encoder
 from model.utils.get_torch_device import get_torch_device
+from logger import init_logger, get_logger
 
 
 torch.manual_seed(7)
@@ -71,7 +72,7 @@ def save_model(model_dir, model_files, keep_last_models):
             try:
                 os.remove(model_file)
             except Exception as e:
-                print(f'[WARNING] Deleting model file fails. {model_file}, {e}')
+                get_logger().warning(f'Deleting model file fails. {model_file}, {e}')
         model_files = model_files[-keep_last_models:]
     
     return model_files
@@ -84,7 +85,7 @@ if __name__ == '__main__':
     args = ap.parse_args()
 
     if not os.path.exists(args.config):
-        print(f'[INFO] config file {args.config} not exists.')
+        get_logger().error(f'config file {args.config} not exists.')
         sys.exit()
 
     with open(args.config, 'rt') as config_file:
@@ -95,7 +96,7 @@ if __name__ == '__main__':
     model_dir = config['model_dir']
     if not model_dir:
         model_dir = f'output/model_{datetime.now().strftime("%Y%m%d%H%M%S")}'
-
+    # TODO: set model_dir on resume!
     keep_last_models = config['keep_last_models']
     cuda_index = config['cuda_index']
     epochs = config['epochs']
@@ -119,42 +120,62 @@ if __name__ == '__main__':
 
     if os.path.exists(model_dir):
         if not resume:
-            print(f'[ERROR] model directory ({model_dir}) already exists.')
+            get_logger().error(f'model directory ({model_dir}) already exists.')
             sys.exit()
     else:
         if resume:
-            print(f'[ERROR] model directory ({model_dir}) for resume not exists.')
+            get_logger().error(f'model directory ({model_dir}) for resume not exists.')
             sys.exit()
         else:
             os.makedirs(model_dir, exist_ok=True)
             shutil.copy(args.config, model_dir)
 
-    train_dataloader = mlm_dataloader(train_dataset_files, vocab, vocab_start_token_id, seq_len, batch_size)
-    valid_dataloader = mlm_dataloader(valid_dataset_files, vocab, vocab_start_token_id, seq_len, batch_size)
+    init_logger(os.path.join(model_dir, 'log.log'))
+    get_logger().info('Training started.')
+    separator = '='*80
+    txt = 'configuration information\n'
+    txt += f'{separator}\n'
+    for k, v in config.items():
+        txt += f'{k:<22}: {v}\n'
+    txt += f'{separator}'
+    get_logger().info(txt)
+
     device = get_torch_device(cuda_index)
 
+    get_logger().info(f'Used device type: {device.type}')
     model = lm_encoder(
         d_model, h, ff, n_layers, len(vocab), padding_idx=vocab['__PAD__'],
         dropout_p=p_dropout, use_torch_module=False
     )
     model.to(device=device)
 
-    separator = '='*80
-    print(separator)
+    txt = f'model information\n{separator}\n'
     num_params = 0
     for name, params in model.named_parameters():
-        print(name, params.shape)
+        txt += f'{name}, {params.shape}\n'
         if params.dim() > 1:
             torch.nn.init.xavier_uniform_(params)
         num_params += params.numel()
-    print(
+    txt += (
         f"{separator}\n"
         f"{model}\n"
         f"{separator}\n"
         f"Number of parameters: {num_params:,}\n"
-        f"{separator}\n"
-    )
+        f"{separator}")
+    
+    get_logger().info(txt)
 
+    get_logger().info('Loading dataset...')
+    train_dataloader = mlm_dataloader(train_dataset_files, vocab, vocab_start_token_id, seq_len, batch_size)
+    valid_dataloader = mlm_dataloader(valid_dataset_files, vocab, vocab_start_token_id, seq_len, batch_size)
+    
+    datasets = ''
+    if train_dataloader:
+        datasets += f'trains: {len(train_dataloader.dataset)} '
+    if valid_dataloader:
+        datasets += f'valids: {len(valid_dataloader.dataset)}'
+    get_logger().info(f'Dataset loaded. {datasets}')
+    
     sw = SummaryWriter(os.path.join(model_dir, 'logs'))
 
     loss_fn = torch.nn.CrossEntropyLoss()
@@ -178,7 +199,7 @@ if __name__ == '__main__':
         model_files = []
         epoch = 0
 
-    sleep_between_step = .00
+    sleep_between_step = .0
     train_loss, train_acc, val_loss, val_acc = 0, 0, 0, 0
 
     try:
@@ -204,18 +225,20 @@ if __name__ == '__main__':
 
             sw.add_scalars('elapsed_sec_per_epoch', training_sec_per_epoch, i+1)
             model_files = save_model(model_dir, model_files, keep_last_models)
-            print(f'epoch {i+1}. train_loss: {round(train_loss,4):>8}, train_acc: {round(train_acc, 4):>8}, val_loss: {round(val_loss,4):>8}, val_acc: {round(val_acc, 4):>8}, elapsed: {round(time.time()-t1,3)}s')
+            torch.save(
+                {
+                    'epoch': i+1,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optim.state_dict()
+                },
+                os.path.join(model_dir, 'checkpoint.pt')
+            )
+            get_logger().info(f'epoch {i+1}. train_loss: {round(train_loss,4):>8}, train_acc: {round(train_acc, 4):>8}, val_loss: {round(val_loss,4):>8}, val_acc: {round(val_acc, 4):>8}, elapsed: {round(time.time()-t1,3)}s')
     except KeyboardInterrupt:
-        print("[INFO] Training stopped.")
+        get_logger().info("Training stopped.")
     except Exception as e:
-        print(f'[ERROR] Exception occured during training. {e}')
-    
-    torch.save(
-        {
-            'epoch': i,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optim.state_dict()
-        },
-        os.path.join(model_dir, 'checkpoint.pt')
-    )
+        get_logger().error(f'Exception occured during training. {e}')
+    else:
+        get_logger().info("All training finished.")
+
     sw.close()

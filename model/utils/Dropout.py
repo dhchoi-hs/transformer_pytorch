@@ -5,7 +5,7 @@ from torch import nn
 class Dropout(nn.Module):
     def __init__(self, p=0.1) -> None:
         super().__init__()
-        assert p < 0 or p > 1, '[ERROR] Invalid value of dropout!'
+        assert 0 <= p <= 1, f'[ERROR] Invalid value of dropout! {p}'
         self.prob = p
 
     def forward(self, x):

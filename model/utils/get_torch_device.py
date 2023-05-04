@@ -9,8 +9,6 @@ def get_torch_device(cuda_idx=None):
         device = torch.device(cuda)
     else:
         device = torch.device('cpu')
-    
-    print(f'[get_torch_device] Used device type: {device.type}')
 
     return device
 
