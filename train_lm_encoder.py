@@ -42,12 +42,13 @@ def run_epoch(dataset, model, criterion, optim=None, train_mode=True, sleep=None
         output_only_masked = output[y_masked]
         
         y_only_masked = y[y_masked]
-        output_only_masked = model.lin(output_only_masked)
+        output_only_masked = torch.matmul(output_only_masked, model.emb.table.T)
 
         loss = criterion(output_only_masked, y_only_masked)
 
         if train_mode:
             loss.backward()
+            model.emb.table.grad[model.emb.padding_idx] = torch.zeros_like(model.emb.table.grad[model.emb.padding_idx])
             optim.step()
 
         item = loss.item()
@@ -56,6 +57,7 @@ def run_epoch(dataset, model, criterion, optim=None, train_mode=True, sleep=None
         output_labels = output_only_masked.argmax(dim=-1)
         a = torch.count_nonzero(output_labels == y_only_masked)
         acc = a.item() / y_only_masked.size(0)
+        # TODO: Add macro-average-acc?
         pbar.set_description(f'{mode} loss: {round(item, 4):>8} acc: {round(acc, 4):>8}')
         if sleep:
             time.sleep(sleep)
@@ -63,8 +65,8 @@ def run_epoch(dataset, model, criterion, optim=None, train_mode=True, sleep=None
     return running_loss / total_step, acc
 
 
-def save_model(model_dir, model_files, keep_last_models):
-    model_file = os.path.join(model_dir, f'model_{i+1}.pt')
+def save_model(model_dir, model_files, keep_last_models, epoch):
+    model_file = os.path.join(model_dir, f'model_{epoch}.pt')
     torch.save(model.state_dict(), model_file)
     model_files.append(model_file)
     if len(model_files) > keep_last_models:
@@ -81,27 +83,27 @@ def save_model(model_dir, model_files, keep_last_models):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('-c', '--config', type=str, default='configs/config_ln_encoder.yaml')
+    ap.add_argument('-d', '--model_dir', type=str, default='')
     ap.add_argument('-r', '--resume', default=False, action='store_true')
     args = ap.parse_args()
 
-    if not os.path.exists(args.config):
-        get_logger().error(f'config file {args.config} not exists.')
-        sys.exit()
-
-    with open(args.config, 'rt') as config_file:
-        config = yaml.load(config_file, yaml.SafeLoader)
-
+    config_file = args.config
+    model_dir = args.model_dir
     resume = args.resume
 
-    model_dir = config['model_dir']
-    if not model_dir:
-        model_dir = f'output/model_{datetime.now().strftime("%Y%m%d%H%M%S")}'
-    # TODO: set model_dir on resume!
+    if not os.path.exists(config_file):
+        get_logger().error(f'config file {config_file} not exists.')
+        sys.exit()
+
+    with open(config_file, 'rt') as f:
+        config = yaml.load(f, yaml.SafeLoader)
+
     keep_last_models = config['keep_last_models']
     cuda_index = config['cuda_index']
     epochs = config['epochs']
     batch_size = config['batch_size']
     learning_rate = config['learning_rate']
+    weight_decay = config['weight_decay']
     d_model = config['d_model']
     h = config['h']
     ff = config['ff']
@@ -115,6 +117,12 @@ if __name__ == '__main__':
 
     assert keep_last_models > 0, 'keep_last_models config value must be greater than 0.'
 
+    if not model_dir and not resume:
+        model_dir = f'output/model_{datetime.now().strftime("%Y%m%d%H%M%S")}'
+    elif resume and not model_dir:
+        get_logger().error(f'No model_dir arg for resume.')
+        sys.exit()
+
     with open(vocab_file, 'rt') as f:
         vocab = json.load(f)
 
@@ -124,11 +132,11 @@ if __name__ == '__main__':
             sys.exit()
     else:
         if resume:
-            get_logger().error(f'model directory ({model_dir}) for resume not exists.')
+            get_logger().error(f'model directory ({model_dir}) not exists.')
             sys.exit()
         else:
             os.makedirs(model_dir, exist_ok=True)
-            shutil.copy(args.config, model_dir)
+            shutil.copy(config_file, model_dir)
 
     init_logger(os.path.join(model_dir, 'log.log'))
     get_logger().info('Training started.')
@@ -140,12 +148,13 @@ if __name__ == '__main__':
     txt += f'{separator}'
     get_logger().info(txt)
 
+    # TODO: use parallel gpu
     device = get_torch_device(cuda_index)
 
     get_logger().info(f'Used device type: {device.type}')
     model = lm_encoder(
-        d_model, h, ff, n_layers, len(vocab), padding_idx=vocab['__PAD__'],
-        dropout_p=p_dropout, use_torch_module=False
+        d_model, h, ff, n_layers, len(vocab),
+        padding_idx=vocab['__PAD__'], dropout_p=p_dropout
     )
     model.to(device=device)
 
@@ -153,9 +162,11 @@ if __name__ == '__main__':
     num_params = 0
     for name, params in model.named_parameters():
         txt += f'{name}, {params.shape}\n'
-        if params.dim() > 1:
-            torch.nn.init.xavier_uniform_(params)
-        num_params += params.numel()
+        # This has the problem of reinitializing all the initialized values of the modules. Implemented in the constructor of each module.
+        # if params.dim() > 1:
+        #     torch.nn.init.xavier_uniform_(params)
+        if params.requires_grad == True:
+            num_params += params.numel()
     txt += (
         f"{separator}\n"
         f"{model}\n"
@@ -180,7 +191,7 @@ if __name__ == '__main__':
 
     loss_fn = torch.nn.CrossEntropyLoss()
     loss_fn.to(device=device)
-    optim = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optim = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
     if resume:
         checkpoint = torch.load(os.path.join(model_dir, 'checkpoint.pt'))
@@ -202,6 +213,7 @@ if __name__ == '__main__':
     sleep_between_step = .0
     train_loss, train_acc, val_loss, val_acc = 0, 0, 0, 0
 
+    # model = torch.compile(model, mode="max-autotune")
     try:
         for i in range(epoch, epochs):
             t1 = time.time()
@@ -224,7 +236,7 @@ if __name__ == '__main__':
                 sw.add_scalar('Acc/validation', val_acc, i+1)
 
             sw.add_scalars('elapsed_sec_per_epoch', training_sec_per_epoch, i+1)
-            model_files = save_model(model_dir, model_files, keep_last_models)
+            model_files = save_model(model_dir, model_files, keep_last_models, i+1)
             torch.save(
                 {
                     'epoch': i+1,

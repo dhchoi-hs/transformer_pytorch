@@ -9,12 +9,15 @@ class Embeddings(nn.Module):
         self.d_model = d_model
         self.padding_idx = padding_idx
         
-        self.table = nn.Parameter(torch.randn([vocab_len-1, d_model]), requires_grad=True)
-        self.register_buffer('padding_emb', torch.zeros([1, self.d_model], requires_grad=False))
+        self.table = nn.Parameter(torch.zeros([vocab_len, d_model]), requires_grad=True)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.table)
+        self.table.data[self.padding_idx] = torch.zeros_like(self.table[self.padding_idx])
     
     def forward(self, x):
-        table = torch.cat([self.table[:self.padding_idx], self.padding_emb, self.table[self.padding_idx:]])
-        return table[x] * sqrt(self.d_model)
+        return self.table[x] * sqrt(self.d_model)
 
 
 if __name__ == '__main__':

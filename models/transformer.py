@@ -1,30 +1,31 @@
 import torch
 from torch import nn
-from Embeddings import Embeddings
-from PositionalEncoding import PositionalEncoding
-from utils.get_torch_device import get_torch_device
-from EncoderDecoder import EncoderDecoder
-from Encoder import EncoderLayer, Encoder
-from Decoder import DecoderLayer, Decoder
-from Generator import Generator
+from model.Embeddings import Embeddings
+from model.PositionalEncoding import PositionalEncoding
+from model.utils.get_torch_device import get_torch_device
+from model.EncoderDecoder import EncoderDecoder
+from model.Encoder import EncoderLayer, Encoder
+from model.Decoder import DecoderLayer, Decoder
+from model.Generator import Generator
 
 
 def make_model(src_vocab, tgt_vocab, N: int, d_model: int, h: int, d_ff: int, dropout_p: float):
+    emb = Embeddings(len(src_vocab), d_model)
     encoder_layer = EncoderLayer(d_model, h, d_ff, dropout_p=dropout_p)
     decoder_layer = DecoderLayer(d_model, h, d_ff)
     encoder = Encoder(encoder_layer, N)
     decoder = Decoder(decoder_layer, N)
-    generator = Generator(d_model, len(tgt_vocab))
+    generator = Generator(d_model, len(tgt_vocab), emb)
 
     model = EncoderDecoder(
         encoder,
         decoder,
         nn.Sequential(
-            Embeddings(len(src_vocab), d_model),
+            emb,
             PositionalEncoding(len(src_vocab), d_model, dropout_p)
         ),
         nn.Sequential(
-            Embeddings(len(tgt_vocab), d_model),
+            emb,
             PositionalEncoding(len(tgt_vocab), d_model, dropout_p)
         ),
         generator

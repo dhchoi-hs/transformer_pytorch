@@ -5,12 +5,13 @@ from utils.Linear import Linear
 
 
 class Generator(nn.Module):
-    def __init__(self, d_model, vocab) -> None:
+    def __init__(self, d_model, vocab, emb) -> None:
         super().__init__()
-        self.lin = Linear(d_model, vocab)
+        # self.lin = Linear(d_model, vocab)
+        self.emb = emb
     
     def forward(self, x):
-        return log_softmax(self.lin(x), dim=-1)
+        return log_softmax(torch.matmul(x, self.emb.T), dim=-1)
 
 
 if __name__ == '__main__':
