@@ -18,51 +18,62 @@ from logger import init_logger, get_logger
 
 
 torch.manual_seed(7)
+torch.cuda.manual_seed_all(7)
+
+
+def run_step(a_data, model, criterion, optim=None, train_mode=True, device=None):
+    if train_mode:
+        assert optim, 'optimizer must be set in training mode.'
+    x, y = a_data
+    x = x.to(device)
+    y = y.to(device)
+    
+    if train_mode:
+        optim.zero_grad()
+
+    pad_mask = (x != model.padding_idx).unsqueeze(-2).unsqueeze(-2)
+    output = model(x, pad_mask)
+
+    y_masked = y.bool()
+    output_only_masked = output[y_masked]
+    
+    y_only_masked = y[y_masked]
+    output_only_masked = torch.matmul(output_only_masked, model.emb.table.T)
+
+    loss = criterion(output_only_masked, y_only_masked)
+
+    if train_mode:
+        loss.backward()
+        model.emb.table.grad[model.emb.padding_idx] = torch.zeros_like(model.emb.table.grad[model.emb.padding_idx])
+        optim.step()
+
+    loss_item = loss.item()
+
+    output_labels = output_only_masked.argmax(dim=-1)
+    a = torch.count_nonzero(output_labels == y_only_masked)
+    acc = a.item() / y_only_masked.size(0)
+    # TODO: Add macro-average-acc?
+
+    return loss_item, acc
 
 
 def run_epoch(dataset, model, criterion, optim=None, train_mode=True, sleep=None, device=None):
     if train_mode:
         assert optim, 'optimizer must be set in training mode.'
     running_loss = 0.
+    running_acc = 0.
     total_step = len(dataset)
     pbar = tqdm(dataset)
     mode = 'train' if train_mode else 'valid'
     for data in pbar:
-        x, y = data
-        x = x.to(device)
-        y = y.to(device)
-        
-        if train_mode:
-            optim.zero_grad()
-
-        pad_mask = (x != model.padding_idx).unsqueeze(-2).unsqueeze(-2)
-        output = model(x, pad_mask)
-
-        y_masked = y.bool()
-        output_only_masked = output[y_masked]
-        
-        y_only_masked = y[y_masked]
-        output_only_masked = torch.matmul(output_only_masked, model.emb.table.T)
-
-        loss = criterion(output_only_masked, y_only_masked)
-
-        if train_mode:
-            loss.backward()
-            model.emb.table.grad[model.emb.padding_idx] = torch.zeros_like(model.emb.table.grad[model.emb.padding_idx])
-            optim.step()
-
-        item = loss.item()
-        running_loss += item
-
-        output_labels = output_only_masked.argmax(dim=-1)
-        a = torch.count_nonzero(output_labels == y_only_masked)
-        acc = a.item() / y_only_masked.size(0)
-        # TODO: Add macro-average-acc?
-        pbar.set_description(f'{mode} loss: {round(item, 4):>8} acc: {round(acc, 4):>8}')
+        step_loss, step_acc = run_step(data, model, criterion, optim, train_mode, device)
+        running_loss += step_loss
+        running_acc += step_acc
+        pbar.set_description(f'{mode} loss: {round(step_loss, 4):>8} acc: {round(step_acc, 4):>8}')
         if sleep:
             time.sleep(sleep)
 
-    return running_loss / total_step, acc
+    return running_loss/total_step, running_acc/total_step
 
 
 def save_model(model_dir, model_files, keep_last_models, epoch):
@@ -99,8 +110,9 @@ if __name__ == '__main__':
         config = yaml.load(f, yaml.SafeLoader)
 
     keep_last_models = config['keep_last_models']
+    step_save_ckpt = config['step_save_ckpt']
     cuda_index = config['cuda_index']
-    epochs = config['epochs']
+    epoch = config['epoch']
     batch_size = config['batch_size']
     learning_rate = config['learning_rate']
     weight_decay = config['weight_decay']
@@ -175,20 +187,7 @@ if __name__ == '__main__':
         f"{separator}")
     
     get_logger().info(txt)
-
-    get_logger().info('Loading dataset...')
-    train_dataloader = mlm_dataloader(train_dataset_files, vocab, vocab_start_token_id, seq_len, batch_size)
-    valid_dataloader = mlm_dataloader(valid_dataset_files, vocab, vocab_start_token_id, seq_len, batch_size)
     
-    datasets = ''
-    if train_dataloader:
-        datasets += f'trains: {len(train_dataloader.dataset)} '
-    if valid_dataloader:
-        datasets += f'valids: {len(valid_dataloader.dataset)}'
-    get_logger().info(f'Dataset loaded. {datasets}')
-    
-    sw = SummaryWriter(os.path.join(model_dir, 'logs'))
-
     loss_fn = torch.nn.CrossEntropyLoss()
     loss_fn.to(device=device)
     optim = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -203,49 +202,92 @@ if __name__ == '__main__':
             return 0 if not model_epoch else int(model_epoch.group())
         
         model_files = sorted(glob.glob(os.path.join(model_dir, 'model_*.pt')), key=get_epoch_of_model_file)
-        epoch = checkpoint['epoch']
+        start_epoch = checkpoint['epoch']
+        step = checkpoint['step']
     else:
-        dataloader = train_dataloader or valid_dataloader
-        sw.add_graph(model, dataloader.dataset[0][0].to(device))
         model_files = []
-        epoch = 0
+        start_epoch = 0
+        step = 0
 
+    # optimized_model = torch.compile(model,)
+    # del model
+    # torch.cuda.empty_cache()
+    # model = optimized_model
+
+    get_logger().info('Loading dataset...')
+    train_dataloader = mlm_dataloader(train_dataset_files, vocab, vocab_start_token_id, seq_len, batch_size)
+    valid_dataloader = mlm_dataloader(valid_dataset_files, vocab, vocab_start_token_id, seq_len, batch_size)
+    
+    datasets = ''
+    if train_dataloader:
+        datasets += f'trains: {len(train_dataloader.dataset)}, steps per epoch: {len(train_dataloader)} '
+    if valid_dataloader:
+        datasets += f'valids: {len(valid_dataloader.dataset)}, steps per epoch: {len(valid_dataloader)}'
+    get_logger().info(f'Dataset loaded. {datasets}')
+
+    dataloader = train_dataloader or valid_dataloader
+    sw = SummaryWriter(os.path.join(model_dir, 'logs'))
+    sw.add_graph(model, dataloader.dataset[0][0].to(device))
+    
     sleep_between_step = .0
-    train_loss, train_acc, val_loss, val_acc = 0, 0, 0, 0
+    train_loss, train_acc, val_loss, val_acc = .0, .0, .0, .0
+    train_interval_loss, train_interval_acc = .0, .0
+    logging_interval = 10
 
-    # model = torch.compile(model, mode="max-autotune")
     try:
-        for i in range(epoch, epochs):
-            t1 = time.time()
+        for current_epoch in range(start_epoch+1, epoch+1):
             training_sec_per_epoch = {}
             if train_dataloader is not None:
-                training_started = time.time()
-                model.train()
-                train_loss, train_acc = run_epoch(train_dataloader, model, loss_fn, optim, True, sleep_between_step, device)
-                training_sec_per_epoch['train'] = time.time() - training_started
-                sw.add_scalar('Loss/train', train_loss, i+1)
-                sw.add_scalar('Acc/train', train_acc, i+1)
+                for train_data in train_dataloader:
+                    step += 1
+                    model.train()
+                    training_started = time.time()
+                    train_loss, train_acc = run_step(train_data, model, loss_fn, optim, True, device)
+                    elapsed_train = time.time() - training_started
+                    train_interval_loss += train_loss
+                    train_interval_acc += train_acc
+                    if step % logging_interval == 0:
+                        iterval_loss = train_interval_loss/logging_interval
+                        interval_acc = train_interval_acc/logging_interval
+                        get_logger().info(f'{current_epoch}-{step} training loss: {round(interval_acc, 4):>8}, acc: {round(interval_acc, 4):>8}, elapsed: {round(elapsed_train,2)}s')
+                        train_interval_loss = .0
+                        train_interval_acc = .0
+                        sw.add_scalar('elapsed/train', elapsed_train, step)
+                        sw.add_scalar('Loss/train', iterval_loss, step)
+                        sw.add_scalar('Acc/train', interval_acc, step)
 
-            if valid_dataloader is not None:
-                valid_started = time.time()
-                model.eval()
-                with torch.no_grad():
-                    val_loss, val_acc = run_epoch(valid_dataloader, model, loss_fn, None, False, sleep_between_step, device)
-                training_sec_per_epoch['valid'] = time.time() - valid_started
-                sw.add_scalar('Loss/validation', val_loss, i+1)
-                sw.add_scalar('Acc/validation', val_acc, i+1)
+                    if step > 1 and step % step_save_ckpt == 0:
+                        torch.save(
+                            {
+                                'step': step,
+                                'epoch': current_epoch,
+                                'model_state_dict': model.state_dict(),
+                                'optimizer_state_dict': optim.state_dict()
+                            },
+                            os.path.join(model_dir, 'checkpoint.pt')
+                        )
+                        model_files = save_model(model_dir, model_files, keep_last_models, step)
+                        get_logger().info(f'checkpoint saved at {current_epoch}-{step}')
 
-            sw.add_scalars('elapsed_sec_per_epoch', training_sec_per_epoch, i+1)
-            model_files = save_model(model_dir, model_files, keep_last_models, i+1)
-            torch.save(
-                {
-                    'epoch': i+1,
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optim.state_dict()
-                },
-                os.path.join(model_dir, 'checkpoint.pt')
-            )
-            get_logger().info(f'epoch {i+1}. train_loss: {round(train_loss,4):>8}, train_acc: {round(train_acc, 4):>8}, val_loss: {round(val_loss,4):>8}, val_acc: {round(val_acc, 4):>8}, elapsed: {round(time.time()-t1,3)}s')
+                        if valid_dataloader is not None:
+                            get_logger().info(f'{current_epoch}-{step} Start to validation')
+                            model.eval()
+                            valid_started = time.time()
+                            with torch.no_grad():
+                                val_loss, val_acc = run_epoch(valid_dataloader, model, loss_fn, None, False, sleep_between_step, device)
+                            elapsed_valid = time.time() - valid_started
+                            sw.add_scalar('elapsed/valid', elapsed_valid, step)
+                            sw.add_scalar('Loss/valid', val_loss, step)
+                            sw.add_scalar('Acc/valid', val_acc, step)
+                            get_logger().info(f'{current_epoch}-{step} validation finished. loss: {round(val_loss,4):>8}, acc: {round(val_acc, 4):>8}, elapsed: {round(elapsed_valid,2)}s')
+
+                            if train_dataloader is None:
+                                break
+
+            get_logger().info(f'{current_epoch}-{step} training a epoch finished.')
+
+            # sw.add_scalars('elapsed_sec_per_epoch', training_sec_per_epoch, i+1)
+            # get_logger().info(f'epoch {i+1}. train_loss: {round(train_loss,4):>8}, train_acc: {round(train_acc, 4):>8}, val_loss: {round(val_loss,4):>8}, val_acc: {round(val_acc, 4):>8}, elapsed: {round(time.time()-t1,3)}s')
     except KeyboardInterrupt:
         get_logger().info("Training stopped.")
     except Exception as e:

@@ -8,8 +8,8 @@ def init_logger(filename=None, level=logging.DEBUG):
     global _global_logger
     if _global_logger is not None:
         return
-    
-    formatter = logging.Formatter('%(asctime)s (%(process)d:%(funcName)s) [%(levelname)s] %(message)s')
+    # TODO: implement file rotate 
+    formatter = logging.Formatter('%(asctime)s (%(process)d) [%(levelname)s] %(message)s')
     logger = logging.getLogger()
     streamer = logging.StreamHandler()
     streamer.setFormatter(formatter)

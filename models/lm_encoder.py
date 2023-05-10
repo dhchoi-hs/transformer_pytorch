@@ -1,4 +1,3 @@
-import torch
 from torch import nn
 from model.Embeddings import Embeddings
 from model.PositionalEncoding import PositionalEncoding
