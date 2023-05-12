@@ -1,91 +1,106 @@
-import os
+import random
 from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-torch.manual_seed(7)
+
+random.seed(7)
 
 
 class MLMdataset(Dataset):
-    def __init__(self, dataset_files, vocab, start_index, max_sentence):
+    def __init__(self, dataset_files: list, vocab, start_index, max_sentence, shuffle=False):
         super().__init__()
-        self.dataset = []
-        for dataset_file in dataset_files:
-            with open(dataset_file, 'rt') as f:
-                self.dataset.extend(f.readlines())
-        self.dataset = [list(map(int, r.strip().split(','))) for r in self.dataset]
-        max_len = max(map(len, self.dataset))
-
-        assert max_len <= max_sentence, f'max_len: {max_len}, max_sentence: {max_sentence}'
-        self.max_sentence = max_sentence
-
+        self.dataset_files = dataset_files
         self.vocab = vocab
-
         self.SYMBOL_INDEX = start_index
+        self.max_sentence = max_sentence
+        self.shuffle = shuffle
+        self.seqs = self.load_dataset()[:10000]
 
-        self.x, self.y = self.prepare_mlm_new()
-        assert len(self.x) == len(self.y)
-    
-    def prepare_mlm1(self):
-        """
-        Not used function. replaced to prepare_mlm_new().
-        keep this function to record using masking in different ways
-        """
-        x = self.dataset_.clone()
+    def load_dataset(self):
+        datasets = []
+        for dataset_file in self.dataset_files:
+            with open(dataset_file, 'rt') as f:
+                datasets.append([list(map(int, r.strip().split(','))) for r in f.readlines()])
 
-        entire_mask = (torch.zeros_like(x).float().uniform_() >= 0.85) & (x >= self.SYMBOL_INDEX)
+        max_len = max([max(map(len, d)) for d in datasets])
 
-        # 80% to MASK
-        mask_ = torch.bernoulli(torch.fill(entire_mask.float(), 0.8)).bool() & entire_mask
-        masked_x = torch.masked_fill(x, mask_, self.vocab['__MASK__'])
-        
-        # 10% to random token
-        mask_random = torch.bernoulli(torch.fill(entire_mask.float(), 0.5)).bool() & entire_mask & ~mask_
-        inp = torch.randint(self.SYMBOL_INDEX, len(vocab), masked_x.shape)
-        masked_x = torch.where(mask_random, inp, masked_x)
+        assert max_len <= self.max_sentence, f'max_len: {max_len}, max_sentence: {self.max_sentence}'
 
-        return masked_x, x
-    
-    def prepare_mlm_new(self):
         seqs = []
-        labels = []
-        for _seq in tqdm(self.dataset):
-            length = len(_seq)
-            seq = torch.LongTensor(_seq + [self.vocab['__PAD__']]*(self.max_sentence-length))
-            mask_len = int(length*0.15)
-            mask_indices = torch.randint(0, length, [mask_len])
-            mask_indices_ = mask_indices[:int(mask_len*0.8)]
-            # At least one mask token must be added in a sentence.
-            if len(mask_indices_) == 0:
-                mask_indices_ = torch.randint(0, length, [1])
-                random_replace_token_indices = []
-            else:
-                random_replace_token_indices = torch.LongTensor(mask_indices[int(mask_len*0.8):int(mask_len*0.9)])
-            mask = torch.zeros(seq.shape).bool()
-            mask[mask_indices_] = True
-            label = torch.where(mask, seq, 0)
-            masked_seq = seq.clone()
-            masked_seq[mask] = self.vocab['__MASK__']
-            masked_seq[random_replace_token_indices] = torch.randint(self.SYMBOL_INDEX, len(self.vocab), [len(random_replace_token_indices)])
-            seqs.append(masked_seq)
-            labels.append(label)
-        
-        x = torch.stack(seqs)
-        y = torch.stack(labels)
+        for dataset in datasets:
+            for _seq in tqdm(dataset):
+                seqs.append(_seq)
 
-        return x, y
+        if self.shuffle:
+            random.shuffle(seqs)
+
+        return seqs
+    
+    def get_x_y(self, seq):
+        length = len(seq)
+        seq = torch.LongTensor(seq + [self.vocab['__PAD__']]*(self.max_sentence-length))
+        mask_len = int(length*0.15)
+        mask_indices = torch.randint(0, length, [mask_len])
+        mask_indices_ = mask_indices[:int(mask_len*0.8)]
+        # At least one mask token must be added in a sentence.
+        if len(mask_indices_) == 0:
+            mask_indices_ = torch.randint(0, length, [1])
+            random_replace_token_indices = []
+        else:
+            random_replace_token_indices = torch.LongTensor(mask_indices[int(mask_len*0.8):int(mask_len*0.9)])
+        mask = torch.zeros(seq.shape).bool()
+        mask[mask_indices_] = True
+        label = torch.where(mask, seq, 0)
+        masked_seq = seq.clone()
+        masked_seq[mask] = self.vocab['__MASK__']
+        masked_seq[random_replace_token_indices] = torch.randint(self.SYMBOL_INDEX, len(self.vocab), [len(random_replace_token_indices)])
+
+        return masked_seq, label
     
     def __len__(self):
-        return len(self.x)
+        return len(self.seqs)
 
     def __getitem__(self, index):
-        return self.x[index], self.y[index]
+        return self.get_x_y(self.seqs[index])
 
 
-def mlm_dataloader(dataset_files, vocab, start_index, max_sentence, batch_size):
+class MLMDatasetFixed(MLMdataset):
+    def __init__(self, dataset_files: list, vocab, start_index, max_sentence, shuffle=False):
+        super().__init__(dataset_files, vocab, start_index, max_sentence, shuffle)
+
+        self.x, self.y = self._set_dataset()
+        assert len(self.x) == len(self.y)
+
+    def _set_dataset(self):
+        datas = []
+        labels = []
+
+        for seq in self.seqs:
+            x, y = self.get_x_y(seq)
+            datas.append(x)
+            labels.append(y)
+        
+        datas = torch.stack(datas)
+        labels = torch.stack(labels)
+
+        return datas, labels
+
+    def __len__(self):
+        return len(self.seqs)
+
+    def __getitem__(self, index):
+        return self.get_x_y(self.seqs[index])
+
+
+def mlm_dataloader(dataset_files, vocab, start_index, max_sentence, batch_size, shuffle=False, fixed_mask=True):
     if dataset_files:
-        dataset = MLMdataset(dataset_files, vocab, start_index, max_sentence)
+        if fixed_mask:
+            dataset = MLMDatasetFixed(dataset_files, vocab, start_index, max_sentence, shuffle)
+        else:
+            dataset = MLMdataset(dataset_files, vocab, start_index, max_sentence, shuffle)
+
         dataloader = DataLoader(dataset, batch_size)
         return dataloader
-    else:
-        return None
+
+    return None

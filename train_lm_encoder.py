@@ -125,6 +125,7 @@ if __name__ == '__main__':
     vocab_file = config['vocab_file']
     vocab_start_token_id = config['vocab_start_token_id']
     train_dataset_files = config['train_dataset_files']
+    shuffle_dataset_on_load = config['shuffle_dataset_on_load']
     valid_dataset_files = config['valid_dataset_files']
 
     assert keep_last_models > 0, 'keep_last_models config value must be greater than 0.'
@@ -188,6 +189,15 @@ if __name__ == '__main__':
     
     get_logger().info(txt)
     
+    # # model.eval()
+    # dummy_input_tensor = torch.randint(100, [seq_len, d_model], device=device)
+    # try:
+    #     # with torch.no_grad():
+    #     model(dummy_input_tensor)
+    # except torch.cuda.OutOfMemoryError as e:
+    #     get_logger().error(e)
+    #     sys.exit(1)
+    # del dummy_input_tensor
     loss_fn = torch.nn.CrossEntropyLoss()
     loss_fn.to(device=device)
     optim = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -215,8 +225,14 @@ if __name__ == '__main__':
     # model = optimized_model
 
     get_logger().info('Loading dataset...')
-    train_dataloader = mlm_dataloader(train_dataset_files, vocab, vocab_start_token_id, seq_len, batch_size)
-    valid_dataloader = mlm_dataloader(valid_dataset_files, vocab, vocab_start_token_id, seq_len, batch_size)
+    train_dataloader = mlm_dataloader(
+        train_dataset_files, vocab, vocab_start_token_id,
+        seq_len, batch_size, shuffle_dataset_on_load, fixed_mask=False
+    )
+    valid_dataloader = mlm_dataloader(
+        valid_dataset_files, vocab, vocab_start_token_id,
+        seq_len, batch_size, fixed_mask=True
+    )
     
     datasets = ''
     if train_dataloader:
@@ -229,10 +245,13 @@ if __name__ == '__main__':
     sw = SummaryWriter(os.path.join(model_dir, 'logs'))
     sw.add_graph(model, dataloader.dataset[0][0].to(device))
     
+    torch.cuda.empty_cache()
+
     sleep_between_step = .0
     train_loss, train_acc, val_loss, val_acc = .0, .0, .0, .0
     train_interval_loss, train_interval_acc = .0, .0
-    logging_interval = 10
+    logging_interval = 20
+    elapsed_train = 0
 
     try:
         for current_epoch in range(start_epoch+1, epoch+1):
@@ -243,18 +262,19 @@ if __name__ == '__main__':
                     model.train()
                     training_started = time.time()
                     train_loss, train_acc = run_step(train_data, model, loss_fn, optim, True, device)
-                    elapsed_train = time.time() - training_started
+                    elapsed_train += time.time() - training_started
                     train_interval_loss += train_loss
                     train_interval_acc += train_acc
                     if step % logging_interval == 0:
-                        iterval_loss = train_interval_loss/logging_interval
-                        interval_acc = train_interval_acc/logging_interval
-                        get_logger().info(f'{current_epoch}-{step} training loss: {round(interval_acc, 4):>8}, acc: {round(interval_acc, 4):>8}, elapsed: {round(elapsed_train,2)}s')
-                        train_interval_loss = .0
-                        train_interval_acc = .0
+                        iterval_loss = train_interval_loss / logging_interval
+                        interval_acc = train_interval_acc / logging_interval
+                        get_logger().info(f'{current_epoch}/{step} training loss: {round(iterval_loss, 4):>7.4f}, acc: {round(interval_acc, 4):>7.4f}, elapsed: {round(elapsed_train,2)}s')
                         sw.add_scalar('elapsed/train', elapsed_train, step)
                         sw.add_scalar('Loss/train', iterval_loss, step)
                         sw.add_scalar('Acc/train', interval_acc, step)
+                        elapsed_train = 0
+                        train_interval_loss = .0
+                        train_interval_acc = .0
 
                     if step > 1 and step % step_save_ckpt == 0:
                         torch.save(
@@ -267,10 +287,10 @@ if __name__ == '__main__':
                             os.path.join(model_dir, 'checkpoint.pt')
                         )
                         model_files = save_model(model_dir, model_files, keep_last_models, step)
-                        get_logger().info(f'checkpoint saved at {current_epoch}-{step}')
+                        get_logger().info(f'checkpoint saved at {current_epoch}/{step}')
 
                         if valid_dataloader is not None:
-                            get_logger().info(f'{current_epoch}-{step} Start to validation')
+                            get_logger().info(f'{current_epoch}/{step} Start to validation')
                             model.eval()
                             valid_started = time.time()
                             with torch.no_grad():
@@ -279,13 +299,12 @@ if __name__ == '__main__':
                             sw.add_scalar('elapsed/valid', elapsed_valid, step)
                             sw.add_scalar('Loss/valid', val_loss, step)
                             sw.add_scalar('Acc/valid', val_acc, step)
-                            get_logger().info(f'{current_epoch}-{step} validation finished. loss: {round(val_loss,4):>8}, acc: {round(val_acc, 4):>8}, elapsed: {round(elapsed_valid,2)}s')
+                            get_logger().info(f'{current_epoch}/{step} validation finished. loss: {round(val_loss,4):>7.4f}, acc: {round(val_acc, 4):>7.4f}, elapsed: {round(elapsed_valid,2)}s')
 
                             if train_dataloader is None:
                                 break
 
-            get_logger().info(f'{current_epoch}-{step} training a epoch finished.')
-
+            get_logger().info(f'{current_epoch}/{step} training a epoch finished.')
             # sw.add_scalars('elapsed_sec_per_epoch', training_sec_per_epoch, i+1)
             # get_logger().info(f'epoch {i+1}. train_loss: {round(train_loss,4):>8}, train_acc: {round(train_acc, 4):>8}, val_loss: {round(val_loss,4):>8}, val_acc: {round(val_acc, 4):>8}, elapsed: {round(time.time()-t1,3)}s')
     except KeyboardInterrupt:
