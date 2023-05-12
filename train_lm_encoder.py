@@ -85,7 +85,7 @@ def save_model(model_dir, model_files, keep_last_models, epoch):
             try:
                 os.remove(model_file)
             except Exception as e:
-                get_logger().warning(f'Deleting model file fails. {model_file}, {e}')
+                get_logger().warning('Deleting model file fails. %s, %s', model_file, e)
         model_files = model_files[-keep_last_models:]
     
     return model_files
@@ -103,7 +103,7 @@ if __name__ == '__main__':
     resume = args.resume
 
     if not os.path.exists(config_file):
-        get_logger().error(f'config file {config_file} not exists.')
+        get_logger().error('config file %s not exists.', config_file)
         sys.exit()
 
     with open(config_file, 'rt') as f:
@@ -133,7 +133,7 @@ if __name__ == '__main__':
     if not model_dir and not resume:
         model_dir = f'output/model_{datetime.now().strftime("%Y%m%d%H%M%S")}'
     elif resume and not model_dir:
-        get_logger().error(f'No model_dir arg for resume.')
+        get_logger().error('No model_dir arg for resume.')
         sys.exit()
 
     with open(vocab_file, 'rt') as f:
@@ -141,11 +141,11 @@ if __name__ == '__main__':
 
     if os.path.exists(model_dir):
         if not resume:
-            get_logger().error(f'model directory ({model_dir}) already exists.')
+            get_logger().error('model directory (%s) already exists.', model_dir)
             sys.exit()
     else:
         if resume:
-            get_logger().error(f'model directory ({model_dir}) not exists.')
+            get_logger().error('model directory (%s) not exists.', model_dir)
             sys.exit()
         else:
             os.makedirs(model_dir, exist_ok=True)
@@ -164,7 +164,7 @@ if __name__ == '__main__':
     # TODO: use parallel gpu
     device = get_torch_device(cuda_index)
 
-    get_logger().info(f'Used device type: {device.type}')
+    get_logger().info('Used device type: %s', device.type)
     model = lm_encoder(
         d_model, h, ff, n_layers, len(vocab),
         padding_idx=vocab['__PAD__'], dropout_p=p_dropout
@@ -178,7 +178,7 @@ if __name__ == '__main__':
         # This has the problem of reinitializing all the initialized values of the modules. Implemented in the constructor of each module.
         # if params.dim() > 1:
         #     torch.nn.init.xavier_uniform_(params)
-        if params.requires_grad == True:
+        if params.requires_grad is True:
             num_params += params.numel()
     txt += (
         f"{separator}\n"
@@ -239,7 +239,7 @@ if __name__ == '__main__':
         datasets += f'trains: {len(train_dataloader.dataset)}, steps per epoch: {len(train_dataloader)} '
     if valid_dataloader:
         datasets += f'valids: {len(valid_dataloader.dataset)}, steps per epoch: {len(valid_dataloader)}'
-    get_logger().info(f'Dataset loaded. {datasets}')
+    get_logger().info('Dataset loaded. %s', datasets)
 
     dataloader = train_dataloader or valid_dataloader
     sw = SummaryWriter(os.path.join(model_dir, 'logs'))
@@ -268,7 +268,8 @@ if __name__ == '__main__':
                     if step % logging_interval == 0:
                         iterval_loss = train_interval_loss / logging_interval
                         interval_acc = train_interval_acc / logging_interval
-                        get_logger().info(f'{current_epoch}/{step} training loss: {round(iterval_loss, 4):>7.4f}, acc: {round(interval_acc, 4):>7.4f}, elapsed: {round(elapsed_train,2)}s')
+                        get_logger().info('%d/%d training loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
+                                          current_epoch, step, round(iterval_loss, 4), round(interval_acc, 4), round(elapsed_train,2))
                         sw.add_scalar('elapsed/train', elapsed_train, step)
                         sw.add_scalar('Loss/train', iterval_loss, step)
                         sw.add_scalar('Acc/train', interval_acc, step)
@@ -287,10 +288,10 @@ if __name__ == '__main__':
                             os.path.join(model_dir, 'checkpoint.pt')
                         )
                         model_files = save_model(model_dir, model_files, keep_last_models, step)
-                        get_logger().info(f'checkpoint saved at {current_epoch}/{step}')
+                        get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
 
                         if valid_dataloader is not None:
-                            get_logger().info(f'{current_epoch}/{step} Start to validation')
+                            get_logger().info('%d/%d Start to validation', current_epoch, step)
                             model.eval()
                             valid_started = time.time()
                             with torch.no_grad():
@@ -299,18 +300,19 @@ if __name__ == '__main__':
                             sw.add_scalar('elapsed/valid', elapsed_valid, step)
                             sw.add_scalar('Loss/valid', val_loss, step)
                             sw.add_scalar('Acc/valid', val_acc, step)
-                            get_logger().info(f'{current_epoch}/{step} validation finished. loss: {round(val_loss,4):>7.4f}, acc: {round(val_acc, 4):>7.4f}, elapsed: {round(elapsed_valid,2)}s')
+                            get_logger().info('%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
+                                              current_epoch, step, round(val_loss, 4), round(val_acc, 4), round(elapsed_valid, 2))
 
                             if train_dataloader is None:
                                 break
 
-            get_logger().info(f'{current_epoch}/{step} training a epoch finished.')
+            get_logger().info('%s/%s training a epoch finished.', current_epoch, step)
             # sw.add_scalars('elapsed_sec_per_epoch', training_sec_per_epoch, i+1)
             # get_logger().info(f'epoch {i+1}. train_loss: {round(train_loss,4):>8}, train_acc: {round(train_acc, 4):>8}, val_loss: {round(val_loss,4):>8}, val_acc: {round(val_acc, 4):>8}, elapsed: {round(time.time()-t1,3)}s')
     except KeyboardInterrupt:
         get_logger().info("Training stopped.")
     except Exception as e:
-        get_logger().error(f'Exception occured during training. {e}')
+        get_logger().error('Exception occured during training. %s', e)
     else:
         get_logger().info("All training finished.")
 
