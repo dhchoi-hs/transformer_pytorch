@@ -15,7 +15,7 @@ class MLMdataset(Dataset):
         self.SYMBOL_INDEX = start_index
         self.max_sentence = max_sentence
         self.shuffle = shuffle
-        self.seqs = self.load_dataset()[:10000]
+        self.seqs = self.load_dataset()
 
     def load_dataset(self):
         datasets = []
