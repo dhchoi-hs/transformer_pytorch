@@ -26,3 +26,4 @@ train_dataset_files:
 valid_dataset_files:
   - /home/dhchoi/projects/transformer_pytorch/kypark_dataset/encoded_corpus_files/BPE_char_en_va_010.txt
   - /home/dhchoi/projects/transformer_pytorch/kypark_dataset/encoded_corpus_files/BPE_char_ko_va_010.txt
+shuffle_dataset_on_load: true
