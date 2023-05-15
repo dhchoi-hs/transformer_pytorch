@@ -189,15 +189,16 @@ if __name__ == '__main__':
     
     get_logger().info(txt)
     
-    # # model.eval()
     # dummy_input_tensor = torch.randint(100, [seq_len, d_model], device=device)
     # try:
     #     # with torch.no_grad():
+    #     model.eval()
     #     model(dummy_input_tensor)
     # except torch.cuda.OutOfMemoryError as e:
     #     get_logger().error(e)
     #     sys.exit(1)
     # del dummy_input_tensor
+
     loss_fn = torch.nn.CrossEntropyLoss()
     loss_fn.to(device=device)
     optim = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -227,11 +228,11 @@ if __name__ == '__main__':
     get_logger().info('Loading dataset...')
     train_dataloader = mlm_dataloader(
         train_dataset_files, vocab, vocab_start_token_id,
-        seq_len, batch_size, shuffle_dataset_on_load, fixed_mask=False
+        seq_len, batch_size, shuffle_dataset_on_load, dynamic_masking=True
     )
     valid_dataloader = mlm_dataloader(
         valid_dataset_files, vocab, vocab_start_token_id,
-        seq_len, batch_size, fixed_mask=True
+        seq_len, batch_size, dynamic_masking=False
     )
     
     datasets = ''

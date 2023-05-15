@@ -7,7 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 random.seed(7)
 
 
-class MLMdataset(Dataset):
+class MLMdatasetDynamic(Dataset):
     def __init__(self, dataset_files: list, vocab, start_index, max_sentence, shuffle=False):
         super().__init__()
         self.dataset_files = dataset_files
@@ -65,7 +65,7 @@ class MLMdataset(Dataset):
         return self.get_x_y(self.seqs[index])
 
 
-class MLMDatasetFixed(MLMdataset):
+class MLMDatasetFixed(MLMdatasetDynamic):
     def __init__(self, dataset_files: list, vocab, start_index, max_sentence, shuffle=False):
         super().__init__(dataset_files, vocab, start_index, max_sentence, shuffle)
 
@@ -93,12 +93,12 @@ class MLMDatasetFixed(MLMdataset):
         return self.get_x_y(self.seqs[index])
 
 
-def mlm_dataloader(dataset_files, vocab, start_index, max_sentence, batch_size, shuffle=False, fixed_mask=True):
+def mlm_dataloader(dataset_files, vocab, start_index, max_sentence, batch_size, shuffle=False, dynamic_masking=True):
     if dataset_files:
-        if fixed_mask:
+        if not dynamic_masking:
             dataset = MLMDatasetFixed(dataset_files, vocab, start_index, max_sentence, shuffle)
         else:
-            dataset = MLMdataset(dataset_files, vocab, start_index, max_sentence, shuffle)
+            dataset = MLMdatasetDynamic(dataset_files, vocab, start_index, max_sentence, shuffle)
 
         dataloader = DataLoader(dataset, batch_size)
         return dataloader
