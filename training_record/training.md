@@ -16,6 +16,7 @@ n_layers: 4 and 6
 p_dropout: 0.1  
 seq_len: 256  
 - datasets: ko&en unified vocab & dataset
+  - trains: 2884352, steps per epoch: 11267 valids: 320484, steps per epoch: 1252
 - result: 
   - training loss decreases, valid loss increases. overfitting
   - blue is layer 6, orange is layer 4 in below image
@@ -37,6 +38,7 @@ n_layers: 4 and 6
 p_dropout: 0.1  
 seq_len: 256  
 - datasets: ko&en unified vocab & dataset
+  - trains: 2884352, steps per epoch: 11267 valids: 320484, steps per epoch: 1252
 - result: 
   - underfitting. weight decay is too high.
   - blue is layer 6, orange is layer 4 in below image
@@ -61,6 +63,7 @@ n_layers: 3 and 6
 p_dropout: 0.1  
 seq_len: 256  
 - datasets: ko&en unified vocab & dataset
+  - trains: 2884352, steps per epoch: 11267 valids: 320484, steps per epoch: 1252
 - result: 
   - different scores depending on the dataset. english corpus get better score than korean corpus.
   - blue is layer 6, orange is layer 4 in below image
@@ -83,6 +86,7 @@ n_layers: 3
 p_dropout: 0.1  
 seq_len: 256  
 - datasets: ko&en unified vocab & only ko dataset
+  - trains: 2884352, steps per epoch: 11267 valids: 320484, steps per epoch: 1252
 - result: 
   - fixed mask token getting better scores slightly than reset mask token.
   - blue is reset mask token, orange is fixed mask token in below image.
@@ -91,7 +95,7 @@ seq_len: 256
 
 ### case 5
 - description: 
-  - only en
+  - only ko
   - weight decay 0.001 vs 0.0001
 - date: 2023/05/12 18:25~2023/05/15 09:25
 - params:
@@ -104,7 +108,8 @@ ff: 2048
 n_layers: 3  
 p_dropout: 0.1  
 seq_len: 256  
-- datasets: ko&en unified vocab & only en dataset
+- datasets: ko&en unified vocab & only ko dataset
+  - trains: 1442176, steps per epoch: 5634 valids: 160242, steps per epoch: 626
 - result: 
   - weight decay 0.0001 is better.
   - blue is weight decay 0.0001, orange is fweight dacy 0.001 in below image.
@@ -114,19 +119,4 @@ seq_len: 256
 ### case 6
  - description:
    - only en corpus, size of BPE vocab to 30000, layer 3 vs 6
-- date: 2023/05/12 18:25~2023/05/15 09:25
-- params:
-  > batch_size: 256  
-learning_rate: 0.0005  
-weight_decay: 0.001 and 0.0001  
-d_model: 768  
-h: 8  
-ff: 2048  
-n_layers: 3 and 6  
-p_dropout: 0.1  
-seq_len: 256  
-- datasets: ko&en unified vocab & only en dataset
-- result: 
-
-<p align="center"><img src="images/case6_loss.png" width="800"/></p>
-<p align="center"><img src="images/case6_acc.png" width="800"/></p>
+- date: ...
