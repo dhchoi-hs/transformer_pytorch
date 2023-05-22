@@ -231,7 +231,11 @@ def main(_config_file, _model_dir, _resume):
 
     dataloader = train_dataloader or valid_dataloader
     sw = SummaryWriter(os.path.join(_model_dir, 'logs'))
-    sw.add_graph(model, dataloader.dataset[0][0].to(device))
+    try:
+        sw.add_graph(model, dataloader.dataset[0][0].to(device))
+    except torch.cuda.OutOfMemoryError as oom_exception:
+        get_logger().error('CUDA out of memory. :%s', oom_exception)
+        sys.exit(1)
     
     torch.cuda.empty_cache()
 
@@ -298,8 +302,10 @@ def main(_config_file, _model_dir, _resume):
         get_logger().info('Training stopped by Ctrl+C.')
     except SigTermException:
         get_logger().info('Training stopped by sigterm.')
-    except Exception as e:
-        get_logger().error('Exception occured during training. %s', e)
+    except torch.cuda.OutOfMemoryError as oom_exception:
+        get_logger().error('CUDA out of memory. :%s', oom_exception)
+    except Exception as exception:
+        get_logger().error('Exception occured during training. %s', exception)
     else:
         get_logger().info("All training finished.")
 
