@@ -15,6 +15,7 @@ from dataset_loader.mlm_dataset import mlm_dataloader
 from models.lm_encoder import lm_encoder
 from model.utils.get_torch_device import get_torch_device
 from logger import init_logger, get_logger
+from signal_handler import SigTermException
 
 
 torch.manual_seed(7)
@@ -76,9 +77,9 @@ def run_epoch(dataset, model, criterion, optim=None, train_mode=True, sleep=None
     return running_loss/total_step, running_acc/total_step
 
 
-def save_model(model_dir, model_files, keep_last_models, epoch):
-    model_file = os.path.join(model_dir, f'model_{epoch}.pt')
-    torch.save(model.state_dict(), model_file)
+def save_model(_model, _model_dir, model_files, keep_last_models, epoch):
+    model_file = os.path.join(_model_dir, f'model_{epoch}.pt')
+    torch.save(_model.state_dict(), model_file)
     model_files.append(model_file)
     if len(model_files) > keep_last_models:
         for model_file in model_files[:-keep_last_models]:
@@ -91,22 +92,8 @@ def save_model(model_dir, model_files, keep_last_models, epoch):
     return model_files
 
 
-if __name__ == '__main__':
-    ap = argparse.ArgumentParser()
-    ap.add_argument('-c', '--config', type=str, default='configs/config_ln_encoder.yaml')
-    ap.add_argument('-d', '--model_dir', type=str, default='')
-    ap.add_argument('-r', '--resume', default=False, action='store_true')
-    args = ap.parse_args()
-
-    config_file = args.config
-    model_dir = args.model_dir
-    resume = args.resume
-
-    if not os.path.exists(config_file):
-        get_logger().error('config file %s not exists.', config_file)
-        sys.exit()
-
-    with open(config_file, 'rt') as f:
+def main(_config_file, _model_dir, _resume):
+    with open(_config_file, 'rt') as f:
         config = yaml.load(f, yaml.SafeLoader)
 
     keep_last_models = config['keep_last_models']
@@ -130,28 +117,28 @@ if __name__ == '__main__':
 
     assert keep_last_models > 0, 'keep_last_models config value must be greater than 0.'
 
-    if not model_dir and not resume:
-        model_dir = f'output/model_{datetime.now().strftime("%Y%m%d%H%M%S")}'
-    elif resume and not model_dir:
+    if not _model_dir and not _resume:
+        _model_dir = f'output/model_{datetime.now().strftime("%Y%m%d%H%M%S")}'
+    elif _resume and not _model_dir:
         get_logger().error('No model_dir arg for resume.')
         sys.exit()
 
     with open(vocab_file, 'rt') as f:
         vocab = json.load(f)
 
-    if os.path.exists(model_dir):
-        if not resume:
-            get_logger().error('model directory (%s) already exists.', model_dir)
+    if os.path.exists(_model_dir):
+        if not _resume:
+            get_logger().error('model directory (%s) already exists.', _model_dir)
             sys.exit()
     else:
-        if resume:
-            get_logger().error('model directory (%s) not exists.', model_dir)
+        if _resume:
+            get_logger().error('model directory (%s) not exists.', _model_dir)
             sys.exit()
         else:
-            os.makedirs(model_dir, exist_ok=True)
-            shutil.copy(config_file, model_dir)
+            os.makedirs(_model_dir, exist_ok=True)
+            shutil.copy(_config_file, _model_dir)
 
-    init_logger(os.path.join(model_dir, 'log.log'))
+    init_logger(os.path.join(_model_dir, 'log.log'))
     get_logger().info('Training started.')
     separator = '='*80
     txt = 'configuration information\n'
@@ -203,8 +190,8 @@ if __name__ == '__main__':
     loss_fn.to(device=device)
     optim = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
-    if resume:
-        checkpoint = torch.load(os.path.join(model_dir, 'checkpoint.pt'))
+    if _resume:
+        checkpoint = torch.load(os.path.join(_model_dir, 'checkpoint.pt'))
         model.load_state_dict(checkpoint['model_state_dict'])
         optim.load_state_dict(checkpoint['optimizer_state_dict'])
 
@@ -212,7 +199,7 @@ if __name__ == '__main__':
             model_epoch = re.search(r'(?<=^model_)\d+(?=.pt$)', os.path.basename(x))
             return 0 if not model_epoch else int(model_epoch.group())
         
-        model_files = sorted(glob.glob(os.path.join(model_dir, 'model_*.pt')), key=get_epoch_of_model_file)
+        model_files = sorted(glob.glob(os.path.join(_model_dir, 'model_*.pt')), key=get_epoch_of_model_file)
         start_epoch = checkpoint['epoch']
         step = checkpoint['step']
     else:
@@ -243,7 +230,7 @@ if __name__ == '__main__':
     get_logger().info('Dataset loaded. %s', datasets)
 
     dataloader = train_dataloader or valid_dataloader
-    sw = SummaryWriter(os.path.join(model_dir, 'logs'))
+    sw = SummaryWriter(os.path.join(_model_dir, 'logs'))
     sw.add_graph(model, dataloader.dataset[0][0].to(device))
     
     torch.cuda.empty_cache()
@@ -256,65 +243,82 @@ if __name__ == '__main__':
 
     try:
         for current_epoch in range(start_epoch+1, epoch+1):
-            training_sec_per_epoch = {}
-            if train_dataloader is not None:
-                for train_data in train_dataloader:
-                    step += 1
-                    model.train()
-                    training_started = time.time()
-                    train_loss, train_acc = run_step(train_data, model, loss_fn, optim, True, device)
-                    elapsed_train += time.time() - training_started
-                    train_interval_loss += train_loss
-                    train_interval_acc += train_acc
-                    if step % logging_interval == 0:
-                        iterval_loss = train_interval_loss / logging_interval
-                        interval_acc = train_interval_acc / logging_interval
-                        get_logger().info('%d/%d training loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
-                                          current_epoch, step, round(iterval_loss, 4), round(interval_acc, 4), round(elapsed_train,2))
-                        sw.add_scalar('elapsed/train', elapsed_train, step)
-                        sw.add_scalar('Loss/train', iterval_loss, step)
-                        sw.add_scalar('Acc/train', interval_acc, step)
-                        elapsed_train = 0
-                        train_interval_loss = .0
-                        train_interval_acc = .0
+            sw.add_scalar('epoch', current_epoch, step)
+            for train_data in train_dataloader:
+                step += 1
+                model.train()
+                training_started = time.time()
+                train_loss, train_acc = run_step(train_data, model, loss_fn, optim, True, device)
+                elapsed_train += time.time() - training_started
+                train_interval_loss += train_loss
+                train_interval_acc += train_acc
+                if step % logging_interval == 0:
+                    iterval_loss = train_interval_loss / logging_interval
+                    interval_acc = train_interval_acc / logging_interval
+                    get_logger().info('%d/%d training loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
+                                        current_epoch, step, round(iterval_loss, 4), round(interval_acc, 4), round(elapsed_train,2))
+                    sw.add_scalar('elapsed/train', elapsed_train, step)
+                    sw.add_scalar('Loss/train', iterval_loss, step)
+                    sw.add_scalar('Acc/train', interval_acc, step)
+                    elapsed_train = 0
+                    train_interval_loss = .0
+                    train_interval_acc = .0
 
-                    if step > 1 and step % step_save_ckpt == 0:
-                        torch.save(
-                            {
-                                'step': step,
-                                'epoch': current_epoch,
-                                'model_state_dict': model.state_dict(),
-                                'optimizer_state_dict': optim.state_dict()
-                            },
-                            os.path.join(model_dir, 'checkpoint.pt')
-                        )
-                        model_files = save_model(model_dir, model_files, keep_last_models, step)
-                        get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
+                if step > 1 and step % step_save_ckpt == 0:
+                    torch.save(
+                        {
+                            'step': step,
+                            'epoch': current_epoch,
+                            'model_state_dict': model.state_dict(),
+                            'optimizer_state_dict': optim.state_dict()
+                        },
+                        os.path.join(_model_dir, 'checkpoint.pt')
+                    )
+                    model_files = save_model(model, _model_dir, model_files, keep_last_models, step)
+                    get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
 
-                        if valid_dataloader is not None:
-                            get_logger().info('%d/%d Start to validation', current_epoch, step)
-                            model.eval()
-                            valid_started = time.time()
-                            with torch.no_grad():
-                                val_loss, val_acc = run_epoch(valid_dataloader, model, loss_fn, None, False, sleep_between_step, device)
-                            elapsed_valid = time.time() - valid_started
-                            sw.add_scalar('elapsed/valid', elapsed_valid, step)
-                            sw.add_scalar('Loss/valid', val_loss, step)
-                            sw.add_scalar('Acc/valid', val_acc, step)
-                            get_logger().info('%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
-                                              current_epoch, step, round(val_loss, 4), round(val_acc, 4), round(elapsed_valid, 2))
+                    if valid_dataloader is not None:
+                        get_logger().info('%d/%d Start to validation', current_epoch, step)
+                        model.eval()
+                        valid_started = time.time()
+                        with torch.no_grad():
+                            val_loss, val_acc = run_epoch(valid_dataloader, model, loss_fn, None, False, sleep_between_step, device)
+                        elapsed_valid = time.time() - valid_started
+                        sw.add_scalar('elapsed/valid', elapsed_valid, step)
+                        sw.add_scalar('Loss/valid', val_loss, step)
+                        sw.add_scalar('Acc/valid', val_acc, step)
+                        get_logger().info('%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
+                                            current_epoch, step, round(val_loss, 4), round(val_acc, 4), round(elapsed_valid, 2))
 
-                            if train_dataloader is None:
-                                break
-
+                        if train_dataloader is None:
+                            break
+            sw.add_scalar('epoch', current_epoch, step-1)
             get_logger().info('%s/%s training a epoch finished.', current_epoch, step)
-            # sw.add_scalars('elapsed_sec_per_epoch', training_sec_per_epoch, i+1)
-            # get_logger().info(f'epoch {i+1}. train_loss: {round(train_loss,4):>8}, train_acc: {round(train_acc, 4):>8}, val_loss: {round(val_loss,4):>8}, val_acc: {round(val_acc, 4):>8}, elapsed: {round(time.time()-t1,3)}s')
     except KeyboardInterrupt:
-        get_logger().info("Training stopped.")
+        get_logger().info('Training stopped by Ctrl+C.')
+    except SigTermException:
+        get_logger().info('Training stopped by sigterm.')
     except Exception as e:
         get_logger().error('Exception occured during training. %s', e)
     else:
         get_logger().info("All training finished.")
 
     sw.close()
+
+
+if __name__ == '__main__':
+    ap = argparse.ArgumentParser()
+    ap.add_argument('-c', '--config', type=str, default='configs/config_ln_encoder.yaml')
+    ap.add_argument('-d', '--model_dir', type=str, default='')
+    ap.add_argument('-r', '--resume', default=False, action='store_true')
+    args = ap.parse_args()
+
+    config_file = args.config
+    model_dir = args.model_dir
+    resume = args.resume
+
+    if not os.path.exists(config_file):
+        get_logger().error('config file %s not exists.', config_file)
+        sys.exit()
+
+    main(config_file, model_dir, resume)
