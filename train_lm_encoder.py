@@ -6,6 +6,7 @@ import argparse
 import shutil
 import json
 import time
+from itertools import count
 from datetime import datetime
 import yaml
 from tqdm import tqdm
@@ -92,7 +93,7 @@ def save_model(_model, _model_dir, model_files, keep_last_models, epoch):
     return model_files
 
 
-def main(_config_file, _model_dir, _resume):
+def main(_config_file, _model_dir, _resume, desc):
     with open(_config_file, 'rt') as f:
         config = yaml.load(f, yaml.SafeLoader)
 
@@ -145,7 +146,8 @@ def main(_config_file, _model_dir, _resume):
     txt += f'{separator}\n'
     for k, v in config.items():
         txt += f'{k:<22}: {v}\n'
-    txt += f'{separator}'
+    txt += f'{separator}\n'
+    txt += f'{"desc":<22}: {desc}'
     get_logger().info(txt)
 
     # TODO: use parallel gpu
@@ -246,7 +248,8 @@ def main(_config_file, _model_dir, _resume):
     elapsed_train = 0
 
     try:
-        for current_epoch in range(start_epoch+1, epoch+1):
+        it = count(start_epoch+1) if epoch is None else range(start_epoch+1, epoch+1)
+        for current_epoch in it:
             sw.add_scalar('epoch', current_epoch, step)
             for train_data in train_dataloader:
                 step += 1
@@ -317,14 +320,16 @@ if __name__ == '__main__':
     ap.add_argument('-c', '--config', type=str, default='configs/config_ln_encoder.yaml')
     ap.add_argument('-d', '--model_dir', type=str, default='')
     ap.add_argument('-r', '--resume', default=False, action='store_true')
+    ap.add_argument('-e', '--desc', type=str, default='')
     args = ap.parse_args()
 
     config_file = args.config
     model_dir = args.model_dir
     resume = args.resume
+    desc = args.desc
 
     if not os.path.exists(config_file):
         get_logger().error('config file %s not exists.', config_file)
         sys.exit()
 
-    main(config_file, model_dir, resume)
+    main(config_file, model_dir, resume, desc)
