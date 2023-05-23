@@ -11,6 +11,7 @@ from datetime import datetime
 import yaml
 from tqdm import tqdm
 import torch
+from torch.optim import lr_scheduler
 from torch.utils.tensorboard import SummaryWriter
 from dataset_loader.mlm_dataset import mlm_dataloader
 from models.lm_encoder import lm_encoder
@@ -93,6 +94,16 @@ def save_model(_model, _model_dir, model_files, keep_last_models, epoch):
     return model_files
 
 
+def create_lr_lambda(warm_up_epoch, gamma):
+    def lr_lambda(epoch):
+        if epoch < warm_up_epoch:
+            return (epoch+1) / warm_up_epoch
+
+        return gamma**(epoch-warm_up_epoch+1)
+
+    return lr_lambda
+
+
 def main(_config_file, _model_dir, _resume, desc):
     with open(_config_file, 'rt') as f:
         config = yaml.load(f, yaml.SafeLoader)
@@ -103,6 +114,8 @@ def main(_config_file, _model_dir, _resume, desc):
     epoch = config['epoch']
     batch_size = config['batch_size']
     learning_rate = config['learning_rate']
+    warm_up_epoch = config['warm_up_epoch']
+    lr_gamma = config['lr_gamma']
     weight_decay = config['weight_decay']
     d_model = config['d_model']
     h = config['h']
@@ -191,7 +204,7 @@ def main(_config_file, _model_dir, _resume, desc):
     loss_fn = torch.nn.CrossEntropyLoss()
     loss_fn.to(device=device)
     optim = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-
+    
     if _resume:
         checkpoint = torch.load(os.path.join(_model_dir, 'checkpoint.pt'))
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -204,10 +217,14 @@ def main(_config_file, _model_dir, _resume, desc):
         model_files = sorted(glob.glob(os.path.join(_model_dir, 'model_*.pt')), key=get_epoch_of_model_file)
         start_epoch = checkpoint['epoch']
         step = checkpoint['step']
+        scheduler = lr_scheduler.LambdaLR(optim, create_lr_lambda(warm_up_epoch, lr_gamma), start_epoch)
+        if scheduler and 'scheduler_state_dict' in checkpoint:
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     else:
         model_files = []
         start_epoch = 0
-        step = 0
+        step = 1
+        scheduler = lr_scheduler.LambdaLR(optim, create_lr_lambda(warm_up_epoch, lr_gamma))
 
     # optimized_model = torch.compile(model,)
     # del model
@@ -232,7 +249,8 @@ def main(_config_file, _model_dir, _resume, desc):
     get_logger().info('Dataset loaded. %s', datasets)
 
     dataloader = train_dataloader or valid_dataloader
-    sw = SummaryWriter(os.path.join(_model_dir, 'logs'))
+    purge_step = None if not resume else step
+    sw = SummaryWriter(os.path.join(_model_dir, 'logs'), purge_step=purge_step)
     try:
         sw.add_graph(model, dataloader.dataset[0][0].to(device))
     except torch.cuda.OutOfMemoryError as oom_exception:
@@ -251,8 +269,9 @@ def main(_config_file, _model_dir, _resume, desc):
         it = count(start_epoch+1) if epoch is None else range(start_epoch+1, epoch+1)
         for current_epoch in it:
             sw.add_scalar('epoch', current_epoch, step)
+            current_lr = optim.param_groups[0]["lr"]
+            sw.add_scalar('learning_rate', current_lr, step)
             for train_data in train_dataloader:
-                step += 1
                 model.train()
                 training_started = time.time()
                 train_loss, train_acc = run_step(train_data, model, loss_fn, optim, True, device)
@@ -272,15 +291,15 @@ def main(_config_file, _model_dir, _resume, desc):
                     train_interval_acc = .0
 
                 if step > 1 and step % step_save_ckpt == 0:
-                    torch.save(
-                        {
+                    save_data = {
                             'step': step,
                             'epoch': current_epoch,
                             'model_state_dict': model.state_dict(),
                             'optimizer_state_dict': optim.state_dict()
-                        },
-                        os.path.join(_model_dir, 'checkpoint.pt')
-                    )
+                        }
+                    if scheduler:
+                        save_data['scheduler_state_dict'] = scheduler.state_dict()
+                    torch.save(save_data, os.path.join(_model_dir, 'checkpoint.pt'))
                     model_files = save_model(model, _model_dir, model_files, keep_last_models, step)
                     get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
 
@@ -299,8 +318,14 @@ def main(_config_file, _model_dir, _resume, desc):
 
                         if train_dataloader is None:
                             break
+                step += 1
             sw.add_scalar('epoch', current_epoch, step-1)
-            get_logger().info('%s/%s training a epoch finished.', current_epoch, step)
+            get_logger().info('%s/%s Training a epoch finished.', current_epoch, step)
+            if scheduler:
+                scheduler.step()
+                next_lr = optim.param_groups[0]["lr"]
+                get_logger().info('Learning rate changed: %f -> %f', current_lr, next_lr)
+
     except KeyboardInterrupt:
         get_logger().info('Training stopped by Ctrl+C.')
     except SigTermException:
