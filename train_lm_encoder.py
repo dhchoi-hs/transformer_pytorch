@@ -18,6 +18,7 @@ from models.lm_encoder import lm_encoder
 from model.utils.get_torch_device import get_torch_device
 from logger import init_logger, get_logger
 from signal_handler import SigTermException
+from lr_scheduler import create_lr_lambda
 
 
 torch.manual_seed(7)
@@ -94,17 +95,7 @@ def save_model(_model, _model_dir, model_files, keep_last_models, epoch):
     return model_files
 
 
-def create_lr_lambda(warm_up_epoch, gamma):
-    def lr_lambda(epoch):
-        if epoch < warm_up_epoch:
-            return (epoch+1) / warm_up_epoch
-
-        return gamma**(epoch-warm_up_epoch+1)
-
-    return lr_lambda
-
-
-def main(_config_file, _model_dir, _resume, desc):
+def main(_config_file, _model_dir, _resume, memo):
     with open(_config_file, 'rt') as f:
         config = yaml.load(f, yaml.SafeLoader)
 
@@ -114,7 +105,6 @@ def main(_config_file, _model_dir, _resume, desc):
     epoch = config['epoch']
     batch_size = config['batch_size']
     learning_rate = config['learning_rate']
-    warm_up_epoch = config['warm_up_epoch']
     lr_gamma = config['lr_gamma']
     weight_decay = config['weight_decay']
     d_model = config['d_model']
@@ -160,7 +150,9 @@ def main(_config_file, _model_dir, _resume, desc):
     for k, v in config.items():
         txt += f'{k:<22}: {v}\n'
     txt += f'{separator}\n'
-    txt += f'{"desc":<22}: {desc}'
+    if memo:
+        txt += f'{"memo":<22}: {memo}\n'
+        txt += f'{separator}\n'
     get_logger().info(txt)
 
     # TODO: use parallel gpu
@@ -217,14 +209,11 @@ def main(_config_file, _model_dir, _resume, desc):
         model_files = sorted(glob.glob(os.path.join(_model_dir, 'model_*.pt')), key=get_epoch_of_model_file)
         start_epoch = checkpoint['epoch']
         step = checkpoint['step']
-        scheduler = lr_scheduler.LambdaLR(optim, create_lr_lambda(warm_up_epoch, lr_gamma), start_epoch)
-        if scheduler and 'scheduler_state_dict' in checkpoint:
-            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     else:
+        checkpoint = {}
         model_files = []
         start_epoch = 0
-        step = 1
-        scheduler = lr_scheduler.LambdaLR(optim, create_lr_lambda(warm_up_epoch, lr_gamma))
+        step = 0
 
     # optimized_model = torch.compile(model,)
     # del model
@@ -259,25 +248,44 @@ def main(_config_file, _model_dir, _resume, desc):
     
     torch.cuda.empty_cache()
 
+    if _resume:
+        scheduler = lr_scheduler.LambdaLR(optim, create_lr_lambda(lr_gamma, len(train_dataloader)), step)
+        if scheduler and 'scheduler_state_dict' in checkpoint:
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+    else:
+        scheduler = lr_scheduler.LambdaLR(optim, create_lr_lambda(lr_gamma, len(train_dataloader)))
+    
+    del checkpoint
+
     sleep_between_step = .0
     train_loss, train_acc, val_loss, val_acc = .0, .0, .0, .0
     train_interval_loss, train_interval_acc = .0, .0
     logging_interval = 20
     elapsed_train = 0
 
+    last_lr = optim.param_groups[0]["lr"]
+    last_written_lr = None
+    next_lr = None
+
     try:
+        if step == 0:
+            sw.add_scalar('learning_rate', last_lr, step+1)
         it = count(start_epoch+1) if epoch is None else range(start_epoch+1, epoch+1)
         for current_epoch in it:
-            sw.add_scalar('epoch', current_epoch, step)
-            current_lr = optim.param_groups[0]["lr"]
-            sw.add_scalar('learning_rate', current_lr, step)
+            sw.add_scalar('epoch', current_epoch, step+1)
             for train_data in train_dataloader:
+                step += 1
+                if step > 1 and last_lr != next_lr:
+                    get_logger().info('%d/%d Learning rate changed: %f -> %f', current_epoch, step, last_lr, next_lr)
+                last_lr = optim.param_groups[0]["lr"]
                 model.train()
                 training_started = time.time()
                 train_loss, train_acc = run_step(train_data, model, loss_fn, optim, True, device)
                 elapsed_train += time.time() - training_started
                 train_interval_loss += train_loss
                 train_interval_acc += train_acc
+
+                # logging per 20 steps.
                 if step % logging_interval == 0:
                     iterval_loss = train_interval_loss / logging_interval
                     interval_acc = train_interval_acc / logging_interval
@@ -286,10 +294,14 @@ def main(_config_file, _model_dir, _resume, desc):
                     sw.add_scalar('elapsed/train', elapsed_train, step)
                     sw.add_scalar('Loss/train', iterval_loss, step)
                     sw.add_scalar('Acc/train', interval_acc, step)
+                    if last_written_lr != last_lr:
+                        sw.add_scalar('learning_rate', last_lr, step)
+                        last_written_lr = last_lr
                     elapsed_train = 0
                     train_interval_loss = .0
                     train_interval_acc = .0
-
+                
+                # save checkpoint and validate.
                 if step > 1 and step % step_save_ckpt == 0:
                     save_data = {
                             'step': step,
@@ -318,14 +330,13 @@ def main(_config_file, _model_dir, _resume, desc):
 
                         if train_dataloader is None:
                             break
-                step += 1
-            sw.add_scalar('epoch', current_epoch, step-1)
-            get_logger().info('%s/%s Training a epoch finished.', current_epoch, step)
-            if scheduler:
-                scheduler.step()
-                next_lr = optim.param_groups[0]["lr"]
-                get_logger().info('Learning rate changed: %f -> %f', current_lr, next_lr)
+                # change lr.
+                if scheduler:
+                    scheduler.step()
+                    next_lr = optim.param_groups[0]["lr"]
 
+            sw.add_scalar('epoch', current_epoch, step)
+            get_logger().info('%s/%s Training a epoch finished.', current_epoch, step)
     except KeyboardInterrupt:
         get_logger().info('Training stopped by Ctrl+C.')
     except SigTermException:
@@ -345,16 +356,16 @@ if __name__ == '__main__':
     ap.add_argument('-c', '--config', type=str, default='configs/config_ln_encoder.yaml')
     ap.add_argument('-d', '--model_dir', type=str, default='')
     ap.add_argument('-r', '--resume', default=False, action='store_true')
-    ap.add_argument('-e', '--desc', type=str, default='')
+    ap.add_argument('-m', '--memo', type=str, default='')
     args = ap.parse_args()
 
     config_file = args.config
     model_dir = args.model_dir
     resume = args.resume
-    desc = args.desc
+    memo = args.memo
 
     if not os.path.exists(config_file):
         get_logger().error('config file %s not exists.', config_file)
         sys.exit()
 
-    main(config_file, model_dir, resume, desc)
+    main(config_file, model_dir, resume, memo)
