@@ -2,6 +2,7 @@ import random
 from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset, DataLoader
+from logger import get_logger
 
 
 random.seed(7)
@@ -25,12 +26,13 @@ class MLMdatasetDynamic(Dataset):
 
         max_len = max([max(map(len, d)) for d in datasets])
 
-        assert max_len <= self.max_sentence, f'max_len: {max_len}, max_sentence: {self.max_sentence}'
+        if max_len > self.max_sentence:
+            get_logger().warning('dataset sequence length %d exceed config seq_len %d. dataset sentence exceeding seq_len will be truncated.', max_len, self.max_sentence)
 
         seqs = []
         for dataset in datasets:
             for _seq in tqdm(dataset):
-                seqs.append(_seq)
+                seqs.append(_seq[:self.max_sentence])
 
         if self.shuffle:
             random.shuffle(seqs)
