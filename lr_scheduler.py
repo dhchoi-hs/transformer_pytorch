@@ -1,3 +1,7 @@
+from torch.optim import lr_scheduler
+
+
+SCHEDULERS = [None, 'WarmupExp', 'CosineAnnealingWarmRestarts']
 
 
 def create_lr_lambda(gamma, steps_per_epoch):
@@ -16,3 +20,16 @@ def create_lr_lambda(gamma, steps_per_epoch):
         return gamma ** (int(epoch)-1)
 
     return lr_lambda
+
+
+def create_lr_scheduler(optim, scheduler, steps_per_epoch, current_epoch, **kwargs):
+    if not scheduler:
+        scheduler = None
+    elif scheduler == SCHEDULERS[1]:
+        scheduler = lr_scheduler.LambdaLR(optim, create_lr_lambda(kwargs[0], steps_per_epoch=steps_per_epoch))
+    elif scheduler == SCHEDULERS[2]:
+        scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optim, **kwargs)
+    else:
+        raise ValueError(f'Unknown scheduler name {scheduler}')
+
+    return scheduler

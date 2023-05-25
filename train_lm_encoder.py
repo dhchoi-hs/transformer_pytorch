@@ -8,17 +8,16 @@ import json
 import time
 from itertools import count
 from datetime import datetime
-import yaml
 from tqdm import tqdm
 import torch
-from torch.optim import lr_scheduler
 from torch.utils.tensorboard import SummaryWriter
 from dataset_loader.mlm_dataset import mlm_dataloader
 from models.lm_encoder import lm_encoder
 from model.utils.get_torch_device import get_torch_device
 from logger import init_logger, get_logger
 from signal_handler import SigTermException
-from lr_scheduler import create_lr_lambda
+from lr_scheduler import create_lr_scheduler
+import configuration
 
 
 torch.manual_seed(7)
@@ -96,30 +95,18 @@ def save_model(_model, _model_dir, model_files, keep_last_models, epoch):
 
 
 def main(_config_file, _model_dir, _resume, memo):
-    with open(_config_file, 'rt') as f:
-        config = yaml.load(f, yaml.SafeLoader)
-
-    keep_last_models = config['keep_last_models']
-    step_save_ckpt = config['step_save_ckpt']
-    cuda_index = config['cuda_index']
-    epoch = config['epoch']
-    batch_size = config['batch_size']
-    learning_rate = config['learning_rate']
-    lr_gamma = config['lr_gamma']
-    weight_decay = config['weight_decay']
-    d_model = config['d_model']
-    h = config['h']
-    ff = config['ff']
-    n_layers = config['n_layers']
-    p_dropout = config['p_dropout']
-    seq_len = config['seq_len']
-    vocab_file = config['vocab_file']
-    vocab_start_token_id = config['vocab_start_token_id']
-    train_dataset_files = config['train_dataset_files']
-    shuffle_dataset_on_load = config['shuffle_dataset_on_load']
-    valid_dataset_files = config['valid_dataset_files']
-
-    assert keep_last_models > 0, 'keep_last_models config value must be greater than 0.'
+    try:
+        config = configuration.load_config_file(_config_file)
+        configuration.validate_config(config)
+    except TypeError as type_e:
+        get_logger().error('key of configuration is missing. %s', type_e)
+        sys.exit(1)
+    except FileNotFoundError:
+        get_logger().error('Config file not exists. %s', _config_file)
+        sys.exit(1)
+    except AssertionError as assert_e:
+        get_logger().error(assert_e)
+        sys.exit(1)
 
     if not _model_dir and not _resume:
         _model_dir = f'output/model_{datetime.now().strftime("%Y%m%d%H%M%S")}'
@@ -127,7 +114,7 @@ def main(_config_file, _model_dir, _resume, memo):
         get_logger().error('No model_dir arg for resume.')
         sys.exit()
 
-    with open(vocab_file, 'rt') as f:
+    with open(config.vocab_file, 'rt') as f:
         vocab = json.load(f)
 
     if os.path.exists(_model_dir):
@@ -147,7 +134,7 @@ def main(_config_file, _model_dir, _resume, memo):
     separator = '='*80
     txt = 'configuration information\n'
     txt += f'{separator}\n'
-    for k, v in config.items():
+    for k, v in configuration.convert_to_dict(config).items():
         txt += f'{k:<22}: {v}\n'
     txt += f'{separator}\n'
     if memo:
@@ -156,12 +143,12 @@ def main(_config_file, _model_dir, _resume, memo):
     get_logger().info(txt)
 
     # TODO: use parallel gpu
-    device = get_torch_device(cuda_index)
+    device = get_torch_device(config.cuda_index)
 
     get_logger().info('Used device type: %s', device.type)
     model = lm_encoder(
-        d_model, h, ff, n_layers, len(vocab),
-        padding_idx=vocab['__PAD__'], dropout_p=p_dropout
+        config.d_model, config.h, config.ff, config.n_layers, len(vocab),
+        padding_idx=vocab['__PAD__'], dropout_p=config.p_dropout
     )
     model.to(device=device)
 
@@ -169,9 +156,6 @@ def main(_config_file, _model_dir, _resume, memo):
     num_params = 0
     for name, params in model.named_parameters():
         txt += f'{name}, {params.shape}\n'
-        # This has the problem of reinitializing all the initialized values of the modules. Implemented in the constructor of each module.
-        # if params.dim() > 1:
-        #     torch.nn.init.xavier_uniform_(params)
         if params.requires_grad is True:
             num_params += params.numel()
     txt += (
@@ -195,7 +179,7 @@ def main(_config_file, _model_dir, _resume, memo):
 
     loss_fn = torch.nn.CrossEntropyLoss()
     loss_fn.to(device=device)
-    optim = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    optim = torch.optim.Adam(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
     
     if _resume:
         checkpoint = torch.load(os.path.join(_model_dir, 'checkpoint.pt'))
@@ -222,12 +206,12 @@ def main(_config_file, _model_dir, _resume, memo):
 
     get_logger().info('Loading dataset...')
     train_dataloader = mlm_dataloader(
-        train_dataset_files, vocab, vocab_start_token_id,
-        seq_len, batch_size, shuffle_dataset_on_load, dynamic_masking=True
+        config.train_dataset_files, vocab, config.vocab_start_token_id,
+        config.seq_len, config.batch_size, config.shuffle_dataset_on_load, dynamic_masking=True
     )
     valid_dataloader = mlm_dataloader(
-        valid_dataset_files, vocab, vocab_start_token_id,
-        seq_len, batch_size, dynamic_masking=False
+        config.valid_dataset_files, vocab, config.vocab_start_token_id,
+        config.seq_len, config.batch_size, dynamic_masking=False
     )
     
     datasets = ''
@@ -243,34 +227,29 @@ def main(_config_file, _model_dir, _resume, memo):
     try:
         sw.add_graph(model, dataloader.dataset[0][0].to(device))
     except torch.cuda.OutOfMemoryError as oom_exception:
-        get_logger().error('CUDA out of memory. :%s', oom_exception)
+        get_logger().error('CUDA out of memory on writing summary. :%s', oom_exception)
         sys.exit(1)
     
     torch.cuda.empty_cache()
 
-    if _resume:
-        scheduler = lr_scheduler.LambdaLR(optim, create_lr_lambda(lr_gamma, len(train_dataloader)), step)
-        if scheduler and 'scheduler_state_dict' in checkpoint:
-            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-    else:
-        scheduler = lr_scheduler.LambdaLR(optim, create_lr_lambda(lr_gamma, len(train_dataloader)))
-    
+    scheduler = create_lr_scheduler(optim, config.lr_scheduler, len(train_dataloader), None, **config.lr_scheduler_kwargs)
+    if _resume and scheduler and 'scheduler_state_dict' in checkpoint:
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     del checkpoint
 
     sleep_between_step = .0
-    train_loss, train_acc, val_loss, val_acc = .0, .0, .0, .0
-    train_interval_loss, train_interval_acc = .0, .0
+    train_loss = train_acc = val_loss = val_acc = .0
+    train_interval_loss = train_interval_acc = .0
     logging_interval = 20
     elapsed_train = 0
 
-    last_lr = optim.param_groups[0]["lr"]
+    last_lr = next_lr = optim.param_groups[0]["lr"]
     last_written_lr = None
-    next_lr = None
 
     try:
         if step == 0:
             sw.add_scalar('learning_rate', last_lr, step+1)
-        it = count(start_epoch+1) if epoch is None else range(start_epoch+1, epoch+1)
+        it = count(start_epoch+1) if config.epoch is None else range(start_epoch+1, config.epoch+1)
         for current_epoch in it:
             sw.add_scalar('epoch', current_epoch, step+1)
             for train_data in train_dataloader:
@@ -290,7 +269,7 @@ def main(_config_file, _model_dir, _resume, memo):
                     iterval_loss = train_interval_loss / logging_interval
                     interval_acc = train_interval_acc / logging_interval
                     get_logger().info('%d/%d training loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
-                                        current_epoch, step, round(iterval_loss, 4), round(interval_acc, 4), round(elapsed_train,2))
+                                      current_epoch, step, round(iterval_loss, 4), round(interval_acc, 4), round(elapsed_train,2))
                     sw.add_scalar('elapsed/train', elapsed_train, step)
                     sw.add_scalar('Loss/train', iterval_loss, step)
                     sw.add_scalar('Acc/train', interval_acc, step)
@@ -302,7 +281,7 @@ def main(_config_file, _model_dir, _resume, memo):
                     train_interval_acc = .0
                 
                 # save checkpoint and validate.
-                if step > 1 and step % step_save_ckpt == 0:
+                if step > 1 and step % config.step_save_ckpt == 0:
                     save_data = {
                             'step': step,
                             'epoch': current_epoch,
@@ -312,7 +291,7 @@ def main(_config_file, _model_dir, _resume, memo):
                     if scheduler:
                         save_data['scheduler_state_dict'] = scheduler.state_dict()
                     torch.save(save_data, os.path.join(_model_dir, 'checkpoint.pt'))
-                    model_files = save_model(model, _model_dir, model_files, keep_last_models, step)
+                    model_files = save_model(model, _model_dir, model_files, config.keep_last_models, step)
                     get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
 
                     if valid_dataloader is not None:
@@ -326,14 +305,14 @@ def main(_config_file, _model_dir, _resume, memo):
                         sw.add_scalar('Loss/valid', val_loss, step)
                         sw.add_scalar('Acc/valid', val_acc, step)
                         get_logger().info('%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
-                                            current_epoch, step, round(val_loss, 4), round(val_acc, 4), round(elapsed_valid, 2))
+                                          current_epoch, step, round(val_loss, 4), round(val_acc, 4), round(elapsed_valid, 2))
 
                         if train_dataloader is None:
                             break
-                # change lr.
-                if scheduler:
-                    scheduler.step()
-                    next_lr = optim.param_groups[0]["lr"]
+            # change lr.
+            if scheduler:
+                scheduler.step()
+                next_lr = optim.param_groups[0]["lr"]
 
             sw.add_scalar('epoch', current_epoch, step)
             get_logger().info('%s/%s Training a epoch finished.', current_epoch, step)
