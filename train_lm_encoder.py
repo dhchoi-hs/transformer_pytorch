@@ -204,6 +204,18 @@ def main(_config_file, _model_dir, _resume, memo):
     # torch.cuda.empty_cache()
     # model = optimized_model
 
+    # Expand GPU memory of model before load dataset.
+    dummy_tensor = torch.randint(0, len(vocab)-1, [config.batch_size, config.seq_len], device=device)
+    model.train(False)
+    try:
+        with torch.no_grad():
+            model(dummy_tensor)
+    except torch.cuda.OutOfMemoryError as oom_exception:
+        get_logger().error('CUDA out of memory before load dataset: %s', oom_exception)
+        sys.exit(1)
+    else:
+        del dummy_tensor
+
     get_logger().info('Loading dataset...')
     train_dataloader = mlm_dataloader(
         config.train_dataset_files, vocab, config.vocab_start_token_id,
@@ -221,18 +233,11 @@ def main(_config_file, _model_dir, _resume, memo):
         datasets += f'valids: {len(valid_dataloader.dataset)}, steps per epoch: {len(valid_dataloader)}'
     get_logger().info('Dataset loaded. %s', datasets)
 
-    dataloader = train_dataloader or valid_dataloader
     purge_step = None if not resume else step
     sw = SummaryWriter(os.path.join(_model_dir, 'logs'), purge_step=purge_step)
-    try:
-        sw.add_graph(model, dataloader.dataset[0][0].to(device))
-    except torch.cuda.OutOfMemoryError as oom_exception:
-        get_logger().error('CUDA out of memory on writing summary. :%s', oom_exception)
-        sys.exit(1)
-    
-    torch.cuda.empty_cache()
 
-    scheduler = create_lr_scheduler(optim, config.lr_scheduler, len(train_dataloader), None, **config.lr_scheduler_kwargs)
+    iters = len(train_dataloader)
+    scheduler = create_lr_scheduler(optim, config.lr_scheduler, iters, **config.lr_scheduler_kwargs)
     if _resume and scheduler and 'scheduler_state_dict' in checkpoint:
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     del checkpoint
@@ -254,8 +259,6 @@ def main(_config_file, _model_dir, _resume, memo):
             sw.add_scalar('epoch', current_epoch, step+1)
             for train_data in train_dataloader:
                 step += 1
-                if step > 1 and last_lr != next_lr:
-                    get_logger().info('%d/%d Learning rate changed: %f -> %f', current_epoch, step, last_lr, next_lr)
                 last_lr = optim.param_groups[0]["lr"]
                 model.train()
                 training_started = time.time()
@@ -264,6 +267,10 @@ def main(_config_file, _model_dir, _resume, memo):
                 train_interval_loss += train_loss
                 train_interval_acc += train_acc
 
+                # change lr.
+                if scheduler:
+                    scheduler.step((step) / iters)
+                    
                 # logging per 20 steps.
                 if step % logging_interval == 0:
                     iterval_loss = train_interval_loss / logging_interval
@@ -309,10 +316,6 @@ def main(_config_file, _model_dir, _resume, memo):
 
                         if train_dataloader is None:
                             break
-            # change lr.
-            if scheduler:
-                scheduler.step()
-                next_lr = optim.param_groups[0]["lr"]
 
             sw.add_scalar('epoch', current_epoch, step)
             get_logger().info('%s/%s Training a epoch finished.', current_epoch, step)

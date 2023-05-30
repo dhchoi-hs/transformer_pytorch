@@ -3,7 +3,7 @@ from typing import Union
 import yaml
 
 
-@dataclass
+@dataclass(frozen=True)
 class ConfigData:
     keep_last_models: int
     step_save_ckpt: int
@@ -35,7 +35,8 @@ def load_config_file(config_file) -> ConfigData:
 
 
 def validate_config(config: ConfigData):
-    assert config.keep_last_models > 0, 'keep_last_models config value must be greater than 0.'
+    if config.keep_last_models < 1:
+        raise ValueError('keep_last_models config value must be greater than 0.')
 
 
 def convert_to_dict(config: ConfigData) -> dict:
