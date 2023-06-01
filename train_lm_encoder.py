@@ -94,6 +94,18 @@ def save_model(_model, _model_dir, model_files, keep_last_models, epoch):
     return model_files
 
 
+def save_checkpoint(model, filename, step, current_epoch, optim, scheduler=None):
+    save_data = {
+            'step': step,
+            'epoch': current_epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optim.state_dict()
+        }
+    if scheduler:
+        save_data['scheduler_state_dict'] = scheduler.state_dict()
+    torch.save(save_data, filename)
+
+
 def main(_config_file, _model_dir, _resume, memo):
     try:
         config = configuration.load_config_file(_config_file)
@@ -136,9 +148,9 @@ def main(_config_file, _model_dir, _resume, memo):
     txt += f'{separator}\n'
     for k, v in configuration.convert_to_dict(config).items():
         txt += f'{k:<22}: {v}\n'
-    txt += f'{separator}\n'
+    txt += f'{separator}'
     if memo:
-        txt += f'{"memo":<22}: {memo}\n'
+        txt += f'\n{"memo":<22}: {memo}\n'
         txt += f'{separator}\n'
     get_logger().info(txt)
 
@@ -166,16 +178,6 @@ def main(_config_file, _model_dir, _resume, memo):
         f"{separator}")
     
     get_logger().info(txt)
-    
-    # dummy_input_tensor = torch.randint(100, [seq_len, d_model], device=device)
-    # try:
-    #     # with torch.no_grad():
-    #     model.eval()
-    #     model(dummy_input_tensor)
-    # except torch.cuda.OutOfMemoryError as e:
-    #     get_logger().error(e)
-    #     sys.exit(1)
-    # del dummy_input_tensor
 
     loss_fn = torch.nn.CrossEntropyLoss()
     loss_fn.to(device=device)
@@ -199,17 +201,13 @@ def main(_config_file, _model_dir, _resume, memo):
         start_epoch = 0
         step = 0
 
-    # optimized_model = torch.compile(model,)
-    # del model
-    # torch.cuda.empty_cache()
-    # model = optimized_model
+    if config.compile_model:
+        model = torch.compile(model)
 
     # Expand GPU memory of model before load dataset.
     dummy_tensor = torch.randint(0, len(vocab)-1, [config.batch_size, config.seq_len], device=device)
-    model.train(False)
     try:
-        with torch.no_grad():
-            model(dummy_tensor)
+        model(dummy_tensor)
     except torch.cuda.OutOfMemoryError as oom_exception:
         get_logger().error('CUDA out of memory before load dataset: %s', oom_exception)
         sys.exit(1)
@@ -225,7 +223,7 @@ def main(_config_file, _model_dir, _resume, memo):
         config.valid_dataset_files, vocab, config.vocab_start_token_id,
         config.seq_len, config.batch_size, dynamic_masking=False
     )
-    
+
     datasets = ''
     if train_dataloader:
         datasets += f'trains: {len(train_dataloader.dataset)}, steps per epoch: {len(train_dataloader)} '
@@ -269,7 +267,7 @@ def main(_config_file, _model_dir, _resume, memo):
 
                 # change lr.
                 if scheduler:
-                    scheduler.step((step) / iters)
+                    scheduler.step(step / iters)
                     
                 # logging per 20 steps.
                 if step % logging_interval == 0:
@@ -289,15 +287,7 @@ def main(_config_file, _model_dir, _resume, memo):
                 
                 # save checkpoint and validate.
                 if step > 1 and step % config.step_save_ckpt == 0:
-                    save_data = {
-                            'step': step,
-                            'epoch': current_epoch,
-                            'model_state_dict': model.state_dict(),
-                            'optimizer_state_dict': optim.state_dict()
-                        }
-                    if scheduler:
-                        save_data['scheduler_state_dict'] = scheduler.state_dict()
-                    torch.save(save_data, os.path.join(_model_dir, 'checkpoint.pt'))
+                    save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
                     model_files = save_model(model, _model_dir, model_files, config.keep_last_models, step)
                     get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
 
@@ -321,8 +311,10 @@ def main(_config_file, _model_dir, _resume, memo):
             get_logger().info('%s/%s Training a epoch finished.', current_epoch, step)
     except KeyboardInterrupt:
         get_logger().info('Training stopped by Ctrl+C.')
+        save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
     except SigTermException:
         get_logger().info('Training stopped by sigterm.')
+        save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
     except torch.cuda.OutOfMemoryError as oom_exception:
         get_logger().error('CUDA out of memory. :%s', oom_exception)
     except Exception as exception:

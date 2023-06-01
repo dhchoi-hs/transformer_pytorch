@@ -8,6 +8,7 @@ class ConfigData:
     keep_last_models: int
     step_save_ckpt: int
     cuda_index: Union[int, None]
+    compile_model: bool
     epoch: int
     batch_size: int
     learning_rate: float

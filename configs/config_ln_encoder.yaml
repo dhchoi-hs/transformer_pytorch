@@ -1,6 +1,7 @@
 # general
 cuda_index: 0
 epoch: null
+compile_model: false
 
 # saving model files
 keep_last_models: 10
