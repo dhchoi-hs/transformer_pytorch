@@ -221,7 +221,69 @@ seq_len: 256
 - result: 
   - lr $5*10^{-3}$ got underfitting.
   - L2 weight decay $10^{-6}$ is better than $10^{-5}$.
-  - lr $5*10^{-4}$ score is getting better score slowly and steadily.
+  - lr $5*10^{-5}$ score is getting better score slowly and steadily.
   - blue: 1, green: 2, pink: 3, gray: 4 in below image.
 <p align="center"><img src="images/case9_loss.png" width="800"/></p>
 <p align="center"><img src="images/case9_acc.png" width="800"/></p>
+
+### case 10
+ - description:
+   - size of dataset 1/5
+   - layer 6, weight decay 0, dropout 0
+   - learning rate scheduler - warm up and exponential decay
+   - compare learning rate
+- date: 2023/05/23 18:45~2023/05/25 09:40
+- directory: output/v5k_lr_e04, output/v5k_lr_e05
+- dataset:
+  - 1/5 of only en corpus
+  - ko&en unified BPE vocab token 5k(size: 7458)
+  - trains: 288435, steps per epoch: 1127 valids: 32048, steps per epoch: 126
+- params:
+  > batch_size: 256  
+learning_rate: $5*10^{-4}$ vs $5*10^{-5}$  
+weight_decay: 0  
+d_model: 512  
+h: 8  
+ff: 2048  
+n_layers: 6  
+p_dropout: 0  
+seq_len: 256  
+- result: 
+  - learning rate $5*10^{-4}$ is better.
+  - red: $5*10^{-4}$, blue: $5*10^{-5}$ in below image.
+<p align="center"><img src="images/case10_loss.png" width="800"/></p>
+<p align="center"><img src="images/case10_acc.png" width="800"/></p>
+<p align="center"><img src="images/case10_lr.png" width="800"/></p>
+
+### case 11
+ - description:
+   - size of dataset 1/5
+   - layer 6, weight decay 0, dropout 0
+   - learning rate scheduler - warm up and exponential decay, cosine annealing
+   - compare batch size 64, 128, 256 & lr scheduler
+- date: 2023/05/23 18:45~2023/05/25 09:40
+- directory: output/v5k_lr_e04, output/v5k_lr_e04_batch256, output/v5k_lr_e04_batch128, output/v5k_lr_e04_batch64
+- dataset:
+  - 1/5 of only en corpus
+  - ko&en unified BPE vocab token 5k(size: 7458)
+  - trains: 288435, steps per epoch: 1127 valids: 32048, steps per epoch: 126
+- params:
+  > batch_size: 64 vs 128 vs 256  
+learning_rate: $5*10^{-4}$  
+weight_decay: 0  
+d_model: 512  
+h: 8  
+ff: 2048  
+n_layers: 6  
+p_dropout: 0  
+seq_len: 256  
+- result: 
+  - batch 64 is bad at first, but it gradually becomes more like it.
+  - waumupexp lr seems to be worst, changing gamma of warmupexp lr will be different results.
+  - red: batch256&warmupexp lr, white: batch256&cosine annealing lr, orange: batch128&cosine annealing lr, blue: batch64&cosine annealing lr in below image.
+<p align="center"><img src="images/case11_loss.png" width="800"/></p>
+<p align="center"><img src="images/case11_acc.png" width="800"/></p>
+<p align="center"><img src="images/case11_lr.png" width="800"/></p>
+<p align="center"><img src="images/case11_loss_relative.png" width="800"/></p>
+<p align="center"><img src="images/case11_acc_relative.png" width="800"/></p>
+<p align="center"><img src="images/case11_lr_relative.png" width="800"/></p>
