@@ -11,12 +11,12 @@ from datetime import datetime
 from tqdm import tqdm
 import torch
 from torch.utils.tensorboard import SummaryWriter
+from hs_aiteam_pkgs.util.logger import init_logger, get_logger
+from hs_aiteam_pkgs.util.signal_handler import SigTermException
+from hs_aiteam_pkgs.model.lr_scheduler import create_lr_scheduler
 from dataset_loader.mlm_dataset import mlm_dataloader
 from models.lm_encoder import lm_encoder
 from model.utils.get_torch_device import get_torch_device
-from logger import init_logger, get_logger
-from signal_handler import SigTermException
-from lr_scheduler import create_lr_scheduler
 import configuration
 
 
@@ -182,6 +182,7 @@ def main(_config_file, _model_dir, _resume, memo):
     loss_fn = torch.nn.CrossEntropyLoss()
     loss_fn.to(device=device)
     optim = torch.optim.Adam(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
+    scheduler = create_lr_scheduler(optim, config.lr_scheduler, **config.lr_scheduler_kwargs)
     
     if _resume:
         checkpoint = torch.load(os.path.join(_model_dir, 'checkpoint.pt'))
@@ -195,11 +196,15 @@ def main(_config_file, _model_dir, _resume, memo):
         model_files = sorted(glob.glob(os.path.join(_model_dir, 'model_*.pt')), key=get_epoch_of_model_file)
         start_epoch = checkpoint['epoch']
         step = checkpoint['step']
+        if scheduler and 'scheduler_state_dict' in checkpoint:
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
     else:
         checkpoint = {}
         model_files = []
         start_epoch = 0
         step = 0
+
+    del checkpoint
 
     if config.compile_model:
         model = torch.compile(model)
@@ -226,7 +231,8 @@ def main(_config_file, _model_dir, _resume, memo):
 
     datasets = ''
     if train_dataloader:
-        datasets += f'trains: {len(train_dataloader.dataset)}, steps per epoch: {len(train_dataloader)} '
+        iters = len(train_dataloader)
+        datasets += f'trains: {len(train_dataloader.dataset)}, steps per epoch: {iters} '
     if valid_dataloader:
         datasets += f'valids: {len(valid_dataloader.dataset)}, steps per epoch: {len(valid_dataloader)}'
     get_logger().info('Dataset loaded. %s', datasets)
@@ -234,19 +240,13 @@ def main(_config_file, _model_dir, _resume, memo):
     purge_step = None if not resume else step
     sw = SummaryWriter(os.path.join(_model_dir, 'logs'), purge_step=purge_step)
 
-    iters = len(train_dataloader)
-    scheduler = create_lr_scheduler(optim, config.lr_scheduler, iters, **config.lr_scheduler_kwargs)
-    if _resume and scheduler and 'scheduler_state_dict' in checkpoint:
-        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-    del checkpoint
-
     sleep_between_step = .0
     train_loss = train_acc = val_loss = val_acc = .0
     train_interval_loss = train_interval_acc = .0
     logging_interval = 20
     elapsed_train = 0
 
-    last_lr = next_lr = optim.param_groups[0]["lr"]
+    last_lr = optim.param_groups[0]["lr"]
     last_written_lr = None
 
     try:

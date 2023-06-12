@@ -1,3 +1,9 @@
+"""
+
+THIS MODULE IS DEPRECATED.
+IMPLEMENTED IN A PACKAGE OF HS_AITEAM_PKGS.
+
+"""
 import math
 from torch.optim import lr_scheduler
 
@@ -10,20 +16,19 @@ SCHEDULERS = [
 ]
 
 
-def create_lr_lambda(gamma, steps_per_epoch):
+def create_lr_lambda(gamma, warmup_epoch=1):
     """
     Create learning rate schedule lambda for torch LambdaLR().
-    warm up 1 epoch, lr changed every step.
+    warm up epochs, lr changed every step.
     after warm up, lr decreases exponentially.
     Example:
         >>> scheduler = lr_scheduler.LambdaLR(optim, create_lr_lambda(lr_gamma, len(train_dataloader)), step)
     """
-    def lr_lambda(steps):
-        epoch = steps / steps_per_epoch
-        if epoch < 1.:
-            return (steps+1) / steps_per_epoch
+    def lr_lambda(epoch):
+        if epoch < warmup_epoch:
+            return epoch/warmup_epoch
 
-        return gamma ** (int(epoch)-1)
+        return gamma ** (epoch-warmup_epoch)
 
     return lr_lambda
 
@@ -84,17 +89,17 @@ class CustomCosineAnnealingWarmRestarts(lr_scheduler.LRScheduler):
             param_group['lr'] = lr
 
 
-def create_lr_scheduler(optim, scheduler, steps_per_epoch, **kwargs):
+def create_lr_scheduler(optim, scheduler, **kwargs):
     if not scheduler:
         scheduler = None
     elif scheduler == SCHEDULERS[1]:
-        scheduler = lr_scheduler.LambdaLR(optim, create_lr_lambda(kwargs[0], steps_per_epoch=steps_per_epoch))
+        scheduler = lr_scheduler.LambdaLR(optim, create_lr_lambda(**kwargs))
     elif scheduler == SCHEDULERS[2]:
         scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optim, **kwargs)
     elif scheduler == SCHEDULERS[3]:
         scheduler = CustomCosineAnnealingWarmRestarts(optim, **kwargs)
     else:
-        raise ValueError(f'Unknown scheduler name {scheduler}')
+        raise ValueError(f'Unknown scheduler name: {scheduler}')
 
     return scheduler
 

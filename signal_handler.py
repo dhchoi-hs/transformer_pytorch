@@ -1,4 +1,8 @@
 """
+
+THIS MODULE IS DEPRECATED.
+IMPLEMENTED IN A PACKAGE OF HS_AITEAM_PKGS.
+
 handler module on getting kill signal -15.
 import this module and catch exception.
 

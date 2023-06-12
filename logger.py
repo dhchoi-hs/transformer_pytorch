@@ -1,3 +1,9 @@
+"""
+
+THIS MODULE IS DEPRECATED.
+IMPLEMENTED IN A PACKAGE OF HS_AITEAM_PKGS.
+
+"""
 import logging
 
 
@@ -9,7 +15,8 @@ def init_logger(filename=None, level=logging.DEBUG):
     if _global_logger is not None:
         return
     # TODO: implement file rotate 
-    formatter = logging.Formatter('%(asctime)s (%(process)d) [%(levelname)s] %(message)s')
+    formatter = logging.Formatter(
+        '%(asctime)s(%(process)d)(%(funcName)s)[%(levelname)s] %(message)s')
     logger = logging.getLogger()
     streamer = logging.StreamHandler()
     streamer.setFormatter(formatter)
