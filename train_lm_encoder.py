@@ -8,7 +8,6 @@ import json
 import time
 from itertools import count
 from datetime import datetime
-from tqdm import tqdm
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from hs_aiteam_pkgs.util.logger import init_logger, get_logger
@@ -18,92 +17,12 @@ from dataset_loader.mlm_dataset import mlm_dataloader
 from models.lm_encoder import lm_encoder
 from model.utils.get_torch_device import get_torch_device
 import configuration
+from checkpoint import load_ckpt, save_checkpoint, save_model
+from training_iter import run_step, run_epoch
 
 
 torch.manual_seed(7)
 torch.cuda.manual_seed_all(7)
-
-
-def run_step(a_data, model, criterion, optim=None, train_mode=True, device=None):
-    if train_mode:
-        assert optim, 'optimizer must be set in training mode.'
-    x, y = a_data
-    x = x.to(device)
-    y = y.to(device)
-    
-    if train_mode:
-        optim.zero_grad()
-
-    pad_mask = (x != model.padding_idx).unsqueeze(-2).unsqueeze(-2)
-    output = model(x, pad_mask)
-
-    y_masked = y.bool()
-    output_only_masked = output[y_masked]
-    
-    y_only_masked = y[y_masked]
-    output_only_masked = torch.matmul(output_only_masked, model.emb.table.T)
-
-    loss = criterion(output_only_masked, y_only_masked)
-
-    if train_mode:
-        loss.backward()
-        model.emb.table.grad[model.emb.padding_idx] = torch.zeros_like(model.emb.table.grad[model.emb.padding_idx])
-        optim.step()
-
-    loss_item = loss.item()
-
-    output_labels = output_only_masked.argmax(dim=-1)
-    a = torch.count_nonzero(output_labels == y_only_masked)
-    acc = a.item() / y_only_masked.size(0)
-    # TODO: Add macro-average-acc?
-
-    return loss_item, acc
-
-
-def run_epoch(dataset, model, criterion, optim=None, train_mode=True, sleep=None, device=None):
-    if train_mode:
-        assert optim, 'optimizer must be set in training mode.'
-    running_loss = 0.
-    running_acc = 0.
-    total_step = len(dataset)
-    pbar = tqdm(dataset)
-    mode = 'train' if train_mode else 'valid'
-    for data in pbar:
-        step_loss, step_acc = run_step(data, model, criterion, optim, train_mode, device)
-        running_loss += step_loss
-        running_acc += step_acc
-        pbar.set_description(f'{mode} loss: {round(step_loss, 4):>8} acc: {round(step_acc, 4):>8}')
-        if sleep:
-            time.sleep(sleep)
-
-    return running_loss/total_step, running_acc/total_step
-
-
-def save_model(_model, _model_dir, model_files, keep_last_models, epoch):
-    model_file = os.path.join(_model_dir, f'model_{epoch}.pt')
-    torch.save(_model.state_dict(), model_file)
-    model_files.append(model_file)
-    if len(model_files) > keep_last_models:
-        for model_file in model_files[:-keep_last_models]:
-            try:
-                os.remove(model_file)
-            except Exception as e:
-                get_logger().warning('Deleting model file fails. %s, %s', model_file, e)
-        model_files = model_files[-keep_last_models:]
-    
-    return model_files
-
-
-def save_checkpoint(model, filename, step, current_epoch, optim, scheduler=None):
-    save_data = {
-            'step': step,
-            'epoch': current_epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optim.state_dict()
-        }
-    if scheduler:
-        save_data['scheduler_state_dict'] = scheduler.state_dict()
-    torch.save(save_data, filename)
 
 
 def main(_config_file, _model_dir, _resume, memo):
@@ -185,7 +104,7 @@ def main(_config_file, _model_dir, _resume, memo):
     scheduler = create_lr_scheduler(optim, config.lr_scheduler, **config.lr_scheduler_kwargs)
     
     if _resume:
-        checkpoint = torch.load(os.path.join(_model_dir, 'checkpoint.pt'))
+        checkpoint = load_ckpt(os.path.join(_model_dir, 'checkpoint.pt'))
         model.load_state_dict(checkpoint['model_state_dict'])
         optim.load_state_dict(checkpoint['optimizer_state_dict'])
 
