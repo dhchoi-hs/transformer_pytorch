@@ -2,7 +2,7 @@ import random
 from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset, DataLoader
-from logger import get_logger
+from hs_aiteam_pkgs.util.logger import get_logger
 
 
 random.seed(7)
