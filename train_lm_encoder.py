@@ -19,6 +19,8 @@ from model.utils.get_torch_device import get_torch_device
 import configuration
 from checkpoint import load_ckpt, save_checkpoint, save_model
 from training_iter import run_step, run_epoch
+from trainer import Trainer
+from models.lm_encoder import TrainLM
 
 
 torch.manual_seed(7)
@@ -77,12 +79,15 @@ def main(_config_file, _model_dir, _resume, memo):
     device = get_torch_device(config.cuda_index)
 
     get_logger().info('Used device type: %s', device.type)
-    model = lm_encoder(
-        config.d_model, config.h, config.ff, config.n_layers, len(vocab),
-        padding_idx=vocab['__PAD__'], dropout_p=config.p_dropout
-    )
-    model.to(device=device)
+    # model = lm_encoder(
+    #     config.d_model, config.h, config.ff, config.n_layers, len(vocab),
+    #     padding_idx=vocab['__PAD__'], dropout_p=config.p_dropout
+    # )
+    # model.to(device=device)
 
+    tlm = TrainLM(config.d_model, config.h, config.ff, config.n_layers, len(vocab),
+        padding_idx=vocab['__PAD__'], dropout_p=config.p_dropout, device=device))
+    model = tlm.model
     txt = f'model information\n{separator}\n'
     num_params = 0
     for name, params in model.named_parameters():
@@ -98,10 +103,10 @@ def main(_config_file, _model_dir, _resume, memo):
     
     get_logger().info(txt)
 
-    loss_fn = torch.nn.CrossEntropyLoss()
-    loss_fn.to(device=device)
-    optim = torch.optim.Adam(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
-    scheduler = create_lr_scheduler(optim, config.lr_scheduler, **config.lr_scheduler_kwargs)
+    # loss_fn = torch.nn.CrossEntropyLoss()
+    # loss_fn.to(device=device)
+    # optim = torch.optim.Adam(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
+    # scheduler = create_lr_scheduler(optim, config.lr_scheduler, **config.lr_scheduler_kwargs)
     
     if _resume:
         checkpoint = load_ckpt(os.path.join(_model_dir, 'checkpoint.pt'))
@@ -156,92 +161,95 @@ def main(_config_file, _model_dir, _resume, memo):
         datasets += f'valids: {len(valid_dataloader.dataset)}, steps per epoch: {len(valid_dataloader)}'
     get_logger().info('Dataset loaded. %s', datasets)
 
-    purge_step = None if not resume else step
-    sw = SummaryWriter(os.path.join(_model_dir, 'logs'), purge_step=purge_step)
+    tr = Trainer('output')
+    tr.fit(tlm, train_dataloader, config.epoch, valid_dataloader)
 
-    sleep_between_step = .0
-    train_loss = train_acc = val_loss = val_acc = .0
-    train_interval_loss = train_interval_acc = .0
-    logging_interval = 20
-    elapsed_train = 0
+    # purge_step = None if not resume else step
+    # sw = SummaryWriter(os.path.join(_model_dir, 'logs'), purge_step=purge_step)
 
-    last_lr = optim.param_groups[0]["lr"]
-    last_written_lr = None
+    # sleep_between_step = .0
+    # train_loss = train_acc = val_loss = val_acc = .0
+    # train_interval_loss = train_interval_acc = .0
+    # logging_interval = 20
+    # elapsed_train = 0
 
-    try:
-        if step == 0:
-            sw.add_scalar('learning_rate', last_lr, step+1)
-        it = count(start_epoch+1) if config.epoch is None else range(start_epoch+1, config.epoch+1)
-        for current_epoch in it:
-            sw.add_scalar('epoch', current_epoch, step+1)
-            for train_data in train_dataloader:
-                step += 1
-                last_lr = optim.param_groups[0]["lr"]
-                model.train()
-                training_started = time.time()
-                train_loss, train_acc = run_step(train_data, model, loss_fn, optim, True, device)
-                elapsed_train += time.time() - training_started
-                train_interval_loss += train_loss
-                train_interval_acc += train_acc
+    # last_lr = optim.param_groups[0]["lr"]
+    # last_written_lr = None
 
-                # change lr.
-                if scheduler:
-                    scheduler.step(step / iters)
+    # try:
+    #     if step == 0:
+    #         sw.add_scalar('learning_rate', last_lr, step+1)
+    #     it = count(start_epoch+1) if config.epoch is None else range(start_epoch+1, config.epoch+1)
+    #     for current_epoch in it:
+    #         sw.add_scalar('epoch', current_epoch, step+1)
+    #         for train_data in train_dataloader:
+    #             step += 1
+    #             last_lr = optim.param_groups[0]["lr"]
+    #             model.train()
+    #             training_started = time.time()
+    #             train_loss, train_acc = run_step(train_data, model, loss_fn, optim, True, device)
+    #             elapsed_train += time.time() - training_started
+    #             train_interval_loss += train_loss
+    #             train_interval_acc += train_acc
+
+    #             # change lr.
+    #             if scheduler:
+    #                 scheduler.step(step / iters)
                     
-                # logging per 20 steps.
-                if step % logging_interval == 0:
-                    iterval_loss = train_interval_loss / logging_interval
-                    interval_acc = train_interval_acc / logging_interval
-                    get_logger().info('%d/%d training loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
-                                      current_epoch, step, round(iterval_loss, 4), round(interval_acc, 4), round(elapsed_train,2))
-                    sw.add_scalar('elapsed/train', elapsed_train, step)
-                    sw.add_scalar('Loss/train', iterval_loss, step)
-                    sw.add_scalar('Acc/train', interval_acc, step)
-                    if last_written_lr != last_lr:
-                        sw.add_scalar('learning_rate', last_lr, step)
-                        last_written_lr = last_lr
-                    elapsed_train = 0
-                    train_interval_loss = .0
-                    train_interval_acc = .0
+    #             # logging per 20 steps.
+    #             if step % logging_interval == 0:
+    #                 iterval_loss = train_interval_loss / logging_interval
+    #                 interval_acc = train_interval_acc / logging_interval
+    #                 get_logger().info('%d/%d training loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
+    #                                   current_epoch, step, round(iterval_loss, 4), round(interval_acc, 4), round(elapsed_train,2))
+    #                 sw.add_scalar('elapsed/train', elapsed_train, step)
+    #                 sw.add_scalar('Loss/train', iterval_loss, step)
+    #                 sw.add_scalar('Acc/train', interval_acc, step)
+    #                 if last_written_lr != last_lr:
+    #                     sw.add_scalar('learning_rate', last_lr, step)
+    #                     last_written_lr = last_lr
+    #                 elapsed_train = 0
+    #                 train_interval_loss = .0
+    #                 train_interval_acc = .0
                 
-                # save checkpoint and validate.
-                if step > 1 and step % config.step_save_ckpt == 0:
-                    save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
-                    model_files = save_model(model, _model_dir, model_files, config.keep_last_models, step)
-                    get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
+    #             # save checkpoint and validate.
+    #             if step > 1 and step % config.step_save_ckpt == 0:
+    #                 save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
+    #                 model_files = save_model(model, _model_dir, model_files, config.keep_last_models, step)
+    #                 get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
 
-                    if valid_dataloader is not None:
-                        get_logger().info('%d/%d Start to validation', current_epoch, step)
-                        model.eval()
-                        valid_started = time.time()
-                        with torch.no_grad():
-                            val_loss, val_acc = run_epoch(valid_dataloader, model, loss_fn, None, False, sleep_between_step, device)
-                        elapsed_valid = time.time() - valid_started
-                        sw.add_scalar('elapsed/valid', elapsed_valid, step)
-                        sw.add_scalar('Loss/valid', val_loss, step)
-                        sw.add_scalar('Acc/valid', val_acc, step)
-                        get_logger().info('%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
-                                          current_epoch, step, round(val_loss, 4), round(val_acc, 4), round(elapsed_valid, 2))
+    #                 if valid_dataloader is not None:
+    #                     get_logger().info('%d/%d Start to validation', current_epoch, step)
+    #                     model.eval()
+    #                     valid_started = time.time()
+    #                     with torch.no_grad():
+    #                         val_loss, val_acc = run_epoch(valid_dataloader, model, loss_fn, None, False, sleep_between_step, device)
+    #                     elapsed_valid = time.time() - valid_started
+    #                     sw.add_scalar('elapsed/valid', elapsed_valid, step)
+    #                     sw.add_scalar('Loss/valid', val_loss, step)
+    #                     sw.add_scalar('Acc/valid', val_acc, step)
+    #                     get_logger().info('%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
+    #                                       current_epoch, step, round(val_loss, 4), round(val_acc, 4), round(elapsed_valid, 2))
 
-                        if train_dataloader is None:
-                            break
+    #                     if train_dataloader is None:
+    #                         break
 
-            sw.add_scalar('epoch', current_epoch, step)
-            get_logger().info('%s/%s Training a epoch finished.', current_epoch, step)
-    except KeyboardInterrupt:
-        get_logger().info('Training stopped by Ctrl+C.')
-        save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
-    except SigTermException:
-        get_logger().info('Training stopped by sigterm.')
-        save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
-    except torch.cuda.OutOfMemoryError as oom_exception:
-        get_logger().error('CUDA out of memory. :%s', oom_exception)
-    except Exception as exception:
-        get_logger().error('Exception occured during training. %s', exception)
-    else:
-        get_logger().info("All training finished.")
+    #         sw.add_scalar('epoch', current_epoch, step)
+    #         get_logger().info('%s/%s Training a epoch finished.', current_epoch, step)
+    # except KeyboardInterrupt:
+    #     get_logger().info('Training stopped by Ctrl+C.')
+    #     save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
+    # except SigTermException:
+    #     get_logger().info('Training stopped by sigterm.')
+    #     save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
+    # except torch.cuda.OutOfMemoryError as oom_exception:
+    #     get_logger().error('CUDA out of memory. :%s', oom_exception)
+    # except Exception as exception:
+    #     get_logger().error('Exception occured during training. %s', exception)
+    # else:
+    #     get_logger().info("All training finished.")
 
-    sw.close()
+    # sw.close()
 
 
 if __name__ == '__main__':
