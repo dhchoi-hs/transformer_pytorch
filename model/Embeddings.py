@@ -13,7 +13,7 @@ class Embeddings(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.xavier_uniform_(self.table)
+        nn.init.xavier_uniform_(self.table, nn.init.calculate_gain('relu'))
         self.table.data[self.padding_idx] = torch.zeros_like(self.table[self.padding_idx])
     
     def forward(self, x):
