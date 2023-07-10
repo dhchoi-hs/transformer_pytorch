@@ -3,7 +3,7 @@ from typing import Union
 import yaml
 
 
-@dataclass(frozen=True)
+@dataclass()
 class ConfigData:
     keep_last_models: int
     step_save_ckpt: int
