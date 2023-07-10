@@ -7,12 +7,14 @@ from model.utils.LayerNorm import LayerNorm
 
 
 class EncoderLayer(nn.Module):
-    def __init__(self, d_model: int, h: int, d_ff: int, dropout_p: float=0.1) -> None:
+    def __init__(self, d_model: int, h: int, d_ff: int, dropout_p: float = 0.1,
+                 activation='relu') -> None:
         super().__init__()
         self.d_model = d_model
-        self.sublayer_connections = clones(SublayerConnection(d_model, dropout_p=dropout_p), 2)
+        self.sublayer_connections = clones(
+            SublayerConnection(d_model, dropout_p=dropout_p), 2)
         self.mha = MultiHeadAttention(d_model, h)
-        self.ff = FeedForward(d_model, d_ff)
+        self.ff = FeedForward(d_model, d_ff, activation)
     
     def forward(self, x, mask=None):
         x = self.sublayer_connections[0](x, lambda _x: self.mha(_x, _x, _x, mask))

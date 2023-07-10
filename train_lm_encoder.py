@@ -79,8 +79,13 @@ def main(_config_file, _model_dir, _resume, memo):
     get_logger().info('Used device type: %s', device.type)
     model = lm_encoder(
         config.d_model, config.h, config.ff, config.n_layers, len(vocab),
-        padding_idx=vocab['__PAD__'], dropout_p=config.p_dropout
+        padding_idx=vocab['__PAD__'], dropout_p=config.p_dropout,
+        activation='relu'
     )
+    if config.compile_model:
+        get_logger().info('compile model...')
+        model = torch.compile(model)
+        get_logger().info('model compiled.')
     model.to(device=device)
 
     txt = f'model information\n{separator}\n'
@@ -124,9 +129,6 @@ def main(_config_file, _model_dir, _resume, memo):
         step = 0
 
     del checkpoint
-
-    if config.compile_model:
-        model = torch.compile(model)
 
     # Expand GPU memory of model before load dataset.
     dummy_tensor = torch.randint(0, len(vocab)-1, [config.batch_size, config.seq_len], device=device)
@@ -230,16 +232,16 @@ def main(_config_file, _model_dir, _resume, memo):
             get_logger().info('%s/%s Training a epoch finished.', current_epoch, step)
     except KeyboardInterrupt:
         get_logger().info('Training stopped by Ctrl+C.')
-        save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
     except SigTermException:
         get_logger().info('Training stopped by sigterm.')
-        save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
     except torch.cuda.OutOfMemoryError as oom_exception:
         get_logger().error('CUDA out of memory. :%s', oom_exception)
     except Exception as exception:
         get_logger().error('Exception occured during training. %s', exception)
     else:
         get_logger().info("All training finished.")
+    finally:
+        save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
 
     sw.close()
 
