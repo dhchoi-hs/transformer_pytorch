@@ -22,14 +22,18 @@ ff: 2048
 n_layers: 3
 p_dropout: 0.1
 seq_len: 256
+activation: swish
 
 # dataset
 vocab_file: /home/dhchoi/projects/transformer_pytorch/kypark_dataset/bpe_dict/BPE_char_dict.json
+max_vocab_numbers: null
 vocab_start_token_id: 6
+shuffle_dataset_on_load: true
 train_dataset_files:
   - /home/dhchoi/projects/transformer_pytorch/kypark_dataset/encoded_corpus_files/BPE_char_en_tr_090.txt
   - /home/dhchoi/projects/transformer_pytorch/kypark_dataset/encoded_corpus_files/BPE_char_ko_tr_090.txt
+train_sampling_ratio: 1.0
 valid_dataset_files:
   - /home/dhchoi/projects/transformer_pytorch/kypark_dataset/encoded_corpus_files/BPE_char_en_va_010.txt
   - /home/dhchoi/projects/transformer_pytorch/kypark_dataset/encoded_corpus_files/BPE_char_ko_va_010.txt
-shuffle_dataset_on_load: true
+valid_sampling_ratio: 1.0

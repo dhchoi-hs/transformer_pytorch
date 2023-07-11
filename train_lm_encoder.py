@@ -6,14 +6,15 @@ import argparse
 import shutil
 import json
 import time
-from itertools import count
+from itertools import count, islice
 from datetime import datetime
 import torch
 from torch.utils.tensorboard import SummaryWriter
+from torch.utils.data import DataLoader
 from hs_aiteam_pkgs.util.logger import init_logger, get_logger
 from hs_aiteam_pkgs.util.signal_handler import SigTermException
 from hs_aiteam_pkgs.model.lr_scheduler import create_lr_scheduler
-from dataset_loader.mlm_dataset import mlm_dataloader
+from dataset_loader.mlm_dataset import MLMdatasetDynamic, MLMDatasetFixed
 from models.lm_encoder import lm_encoder
 from model.utils.get_torch_device import get_torch_device
 import configuration
@@ -47,6 +48,8 @@ def main(_config_file, _model_dir, _resume, memo):
 
     with open(config.vocab_file, 'rt') as f:
         vocab = json.load(f)
+    if config.max_vocab_numbers:
+        vocab = dict(islice(vocab.items(), config.max_vocab_numbers))
 
     if os.path.exists(_model_dir):
         if not _resume:
@@ -80,7 +83,7 @@ def main(_config_file, _model_dir, _resume, memo):
     model = lm_encoder(
         config.d_model, config.h, config.ff, config.n_layers, len(vocab),
         padding_idx=vocab['__PAD__'], dropout_p=config.p_dropout,
-        activation='relu'
+        activation=config.activation
     )
     if config.compile_model:
         get_logger().info('compile model...')
@@ -141,14 +144,13 @@ def main(_config_file, _model_dir, _resume, memo):
         del dummy_tensor
 
     get_logger().info('Loading dataset...')
-    train_dataloader = mlm_dataloader(
-        config.train_dataset_files, vocab, config.vocab_start_token_id,
-        config.seq_len, config.batch_size, config.shuffle_dataset_on_load, dynamic_masking=True
-    )
-    valid_dataloader = mlm_dataloader(
-        config.valid_dataset_files, vocab, config.vocab_start_token_id,
-        config.seq_len, config.batch_size, dynamic_masking=False
-    )
+    train_dataloader = DataLoader(MLMdatasetDynamic(config.train_dataset_files,
+        vocab, config.vocab_start_token_id, config.seq_len, config.shuffle_dataset_on_load,
+        config.train_sampling_ratio), config.batch_size)
+    
+    valid_dataloader = DataLoader(MLMDatasetFixed(config.valid_dataset_files,
+        vocab, config.vocab_start_token_id, config.seq_len,
+        config.shuffle_dataset_on_load, config.valid_sampling_ratio), config.batch_size)
 
     datasets = ''
     if train_dataloader:

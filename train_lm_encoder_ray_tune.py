@@ -6,7 +6,7 @@ import argparse
 import shutil
 import json
 import time
-from itertools import count
+from itertools import islice
 from datetime import datetime
 from copy import deepcopy
 import yaml
@@ -75,9 +75,10 @@ def train_n_val(config):
     model = lm_encoder(
         _config.d_model, _config.h, _config.ff, _config.n_layers, len(vocab),
         padding_idx=vocab['__PAD__'], dropout_p=_config.p_dropout,
-        activation='relu'
+        activation=_config.activation
     )
-    if config.compile_model:
+
+    if _config.compile_model:
         get_logger().info('compile model...')
         model = torch.compile(model)
         get_logger().info('model compiled.')
@@ -104,10 +105,6 @@ def train_n_val(config):
     scheduler = create_lr_scheduler(optim, _config.lr_scheduler, **_config.lr_scheduler_kwargs)
 
     model_files = []
-
-    if _config.compile_model:
-        model = torch.compile(model)
-
 
     sw = SummaryWriter(os.path.join(_model_dir, 'logs'))
 
@@ -154,6 +151,11 @@ def train_n_val(config):
                     sw.add_scalar('elapsed/train', elapsed_train, step)
                     sw.add_scalar('Loss/train', iterval_loss, step)
                     sw.add_scalar('Acc/train', interval_acc, step)
+                    results = {
+                        'loss': iterval_loss,
+                        'acc': interval_acc
+                    }
+                    session.report(results)
                     if last_written_lr != last_lr:
                         sw.add_scalar('learning_rate', last_lr, step)
                         last_written_lr = last_lr
@@ -185,11 +187,11 @@ def train_n_val(config):
 
             sw.add_scalar('epoch', current_epoch, step)
             get_logger().info('%s/%s Training a epoch finished.', current_epoch, step)
-        results = {
-            'loss': min_loss,
-            'acc': max_acc
-        }
-        session.report(results)
+        # results = {
+        #     'loss': min_loss,
+        #     'acc': max_acc
+        # }
+        # session.report(results)
     except KeyboardInterrupt:
         get_logger().info('Training stopped by Ctrl+C.')
     except SigTermException:
@@ -222,11 +224,15 @@ def main(_config_file, _model_dir):
 
     with open(config.vocab_file, 'rt') as f:
         vocab = json.load(f)
+    if config.max_vocab_numbers:
+        vocab = dict(islice(vocab.items(), config.max_vocab_numbers))
 
     train_dataset = MLMdatasetDynamic(
-        config.train_dataset_files, vocab, config.vocab_start_token_id, config.seq_len, True)
+        config.train_dataset_files, vocab, config.vocab_start_token_id,
+        config.seq_len, True, config.train_sampling_ratio)
     valid_dataset = MLMDatasetFixed(
-        config.valid_dataset_files, vocab, config.vocab_start_token_id, config.seq_len, True)
+        config.valid_dataset_files, vocab, config.vocab_start_token_id,
+        config.seq_len, True, config.valid_sampling_ratio)
 
     num_samples = 10
     config = {
