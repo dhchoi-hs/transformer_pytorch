@@ -6,7 +6,7 @@ import argparse
 import shutil
 import json
 import time
-from itertools import count, islice
+from itertools import count
 from datetime import datetime
 import torch
 from torch.utils.tensorboard import SummaryWriter
@@ -48,8 +48,6 @@ def main(_config_file, _model_dir, _resume, memo):
 
     with open(config.vocab_file, 'rt') as f:
         vocab = json.load(f)
-    if config.max_vocab_numbers:
-        vocab = dict(islice(vocab.items(), config.max_vocab_numbers))
 
     if os.path.exists(_model_dir):
         if not _resume:

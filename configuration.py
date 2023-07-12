@@ -23,7 +23,6 @@ class ConfigData:
     seq_len: int
     activation: str
     vocab_file: str
-    max_vocab_numbers: Union[int, None]
     vocab_start_token_id: int
     shuffle_dataset_on_load: bool
     train_dataset_files: list[str]

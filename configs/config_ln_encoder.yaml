@@ -26,7 +26,6 @@ activation: swish
 
 # dataset
 vocab_file: /home/dhchoi/projects/transformer_pytorch/kypark_dataset/bpe_dict/BPE_char_dict.json
-max_vocab_numbers: null
 vocab_start_token_id: 6
 shuffle_dataset_on_load: true
 train_dataset_files:

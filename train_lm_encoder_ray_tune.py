@@ -6,7 +6,6 @@ import argparse
 import shutil
 import json
 import time
-from itertools import islice
 from datetime import datetime
 from copy import deepcopy
 import yaml
@@ -224,8 +223,6 @@ def main(_config_file, _model_dir):
 
     with open(config.vocab_file, 'rt') as f:
         vocab = json.load(f)
-    if config.max_vocab_numbers:
-        vocab = dict(islice(vocab.items(), config.max_vocab_numbers))
 
     train_dataset = MLMdatasetDynamic(
         config.train_dataset_files, vocab, config.vocab_start_token_id,
