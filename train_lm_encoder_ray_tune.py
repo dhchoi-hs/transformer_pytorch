@@ -27,8 +27,8 @@ torch.manual_seed(7)
 torch.cuda.manual_seed_all(7)
 
 
-train_dataset = None
-valid_dataset = None
+train_dataset_ref: ray.ObjectRef = None
+valid_dataset_ref: ray.ObjectRef = None
 vocab: dict = None
 g_config: configuration.ConfigData = None
 epoch = 5
@@ -38,8 +38,8 @@ def train_n_val(hparams):
     learning_rate = hparams['learning_rate']
     batch_size = hparams['batch_size']
 
-    train_dataloader = DataLoader(ray.get(train_dataset), batch_size)
-    valid_dataloader = DataLoader(ray.get(valid_dataset), batch_size)
+    train_dataloader = DataLoader(ray.get(train_dataset_ref), batch_size)
+    valid_dataloader = DataLoader(ray.get(valid_dataset_ref), batch_size)
     _model_dir = os.path.join(session.get_trial_dir(), 'customs')
     os.makedirs(_model_dir, exist_ok=True)
 
@@ -214,7 +214,7 @@ def train_n_val(hparams):
 
 
 def main(_config_file, _model_dir):
-    global g_config, vocab, train_dataset, valid_dataset
+    global g_config, vocab, train_dataset_ref, valid_dataset_ref
 
     try:
         g_config = configuration.load_config_file(_config_file)
@@ -239,8 +239,10 @@ def main(_config_file, _model_dir):
         g_config.valid_dataset_files, vocab, g_config.vocab_start_token_id,
         g_config.seq_len, True, g_config.valid_sampling_ratio)
 
-    train_dataset = ray.put(train_dataset)
-    valid_dataset = ray.put(valid_dataset)
+    train_dataset_ref = ray.put(train_dataset)
+    valid_dataset_ref = ray.put(valid_dataset)
+
+    del train_dataset, valid_dataset
 
     config = {
         "learning_rate": tune.loguniform(1e-5, 1e-3),
