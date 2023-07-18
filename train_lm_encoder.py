@@ -159,7 +159,7 @@ def main(_config_file, _model_dir, _resume, memo):
     get_logger().info('Dataset loaded. %s', datasets)
 
     purge_step = None if not resume else step
-    sw = SummaryWriter(os.path.join(_model_dir, 'logs'), purge_step=purge_step)
+    sw = SummaryWriter(_model_dir, purge_step=purge_step)
 
     sleep_between_step = .0
     train_loss = train_acc = val_loss = val_acc = .0
