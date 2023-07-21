@@ -13,7 +13,7 @@ class MLMdatasetDynamic(Dataset):
         super().__init__()
         self.dataset_files = dataset_files
         self.vocab = vocab
-        self.SYMBOL_INDEX = start_index
+        self.random_replaced_token_start_idx = start_index
         self.max_sentence = max_sentence
         self.shuffle = shuffle
         self.seqs = self.load_dataset()
@@ -27,7 +27,10 @@ class MLMdatasetDynamic(Dataset):
         max_len = max([max(map(len, d)) for d in datasets])
 
         if max_len > self.max_sentence:
-            get_logger().warning('dataset sequence length %d exceed config seq_len %d. dataset sentence exceeding seq_len will be truncated.', max_len, self.max_sentence)
+            get_logger().warning(
+                'dataset sequence length %d exceed config seq_len %d. '
+                'dataset sentence exceeding seq_len will be truncated.',
+                max_len, self.max_sentence)
 
         seqs = []
         for dataset in datasets:
@@ -38,7 +41,7 @@ class MLMdatasetDynamic(Dataset):
             random.shuffle(seqs)
 
         return seqs
-    
+
     def get_x_y(self, seq):
         length = len(seq)
         seq = torch.LongTensor(seq + [self.vocab['__PAD__']]*(self.max_sentence-length))
@@ -50,16 +53,19 @@ class MLMdatasetDynamic(Dataset):
             mask_indices_ = torch.randint(0, length, [1])
             random_replace_token_indices = []
         else:
-            random_replace_token_indices = torch.LongTensor(mask_indices[int(mask_len*0.8):int(mask_len*0.9)])
+            random_replace_token_indices = torch.LongTensor(
+                mask_indices[int(mask_len*0.8):int(mask_len*0.9)])
         mask = torch.zeros(seq.shape).bool()
-        mask[mask_indices_] = True
+        mask[mask_indices] = True
         label = torch.where(mask, seq, 0)
         masked_seq = seq.clone()
         masked_seq[mask] = self.vocab['__MASK__']
-        masked_seq[random_replace_token_indices] = torch.randint(self.SYMBOL_INDEX, len(self.vocab), [len(random_replace_token_indices)])
+        masked_seq[random_replace_token_indices] = torch.randint(
+            self.random_replaced_token_start_idx, len(self.vocab),
+            [len(random_replace_token_indices)])
 
         return masked_seq, label
-    
+
     def __len__(self):
         return len(self.seqs)
 
@@ -82,7 +88,7 @@ class MLMDatasetFixed(MLMdatasetDynamic):
             x, y = self.get_x_y(seq)
             datas.append(x)
             labels.append(y)
-        
+
         datas = torch.stack(datas)
         labels = torch.stack(labels)
 
@@ -95,7 +101,8 @@ class MLMDatasetFixed(MLMdatasetDynamic):
         return self.get_x_y(self.seqs[index])
 
 
-def mlm_dataloader(dataset_files, vocab, start_index, max_sentence, batch_size, shuffle=False, dynamic_masking=True):
+def mlm_dataloader(dataset_files, vocab, start_index, max_sentence, batch_size,
+                   shuffle=False, dynamic_masking=True):
     if dataset_files:
         if not dynamic_masking:
             dataset = MLMDatasetFixed(dataset_files, vocab, start_index, max_sentence, shuffle)
