@@ -40,13 +40,15 @@ def worker_init(worker_id):
 
 
 class MLMdatasetDynamic(Dataset):
-    def __init__(self, dataset_files: list, vocab, start_index, max_sentence, shuffle=False):
+    def __init__(self, dataset_files: list, vocab, start_index, max_sentence,
+                 shuffle=False, sampling_ratio=1.):
         super().__init__()
         self.dataset_files = dataset_files
         self.vocab = vocab
         self.random_replaced_token_start_idx = start_index
         self.max_sentence = max_sentence
         self.shuffle = shuffle
+        self.sampling_ratio = sampling_ratio
         self.seqs = self.load_dataset()
 
     def load_dataset(self):
@@ -65,8 +67,9 @@ class MLMdatasetDynamic(Dataset):
 
         seqs = []
         for dataset in datasets:
-            random.shuffle(dataset)
-            for _seq in tqdm(dataset):#[:int(len(dataset)/400)]):
+            if self.shuffle:
+                random.shuffle(dataset)
+            for _seq in tqdm(dataset[:int(len(dataset)*self.sampling_ratio)]):
                 seqs.append(_seq[:self.max_sentence])
 
         if self.shuffle:
@@ -107,8 +110,10 @@ class MLMdatasetDynamic(Dataset):
 
 
 class MLMDatasetFixed(MLMdatasetDynamic):
-    def __init__(self, dataset_files: list, vocab, start_index, max_sentence, shuffle=False):
-        super().__init__(dataset_files, vocab, start_index, max_sentence, shuffle)
+    def __init__(self, dataset_files: list, vocab, start_index, max_sentence,
+                 shuffle=False, sampling_ratio=1.0):
+        super().__init__(dataset_files, vocab, start_index, max_sentence,
+                         shuffle, sampling_ratio)
 
         self.x, self.y = self._set_dataset()
         assert len(self.x) == len(self.y)

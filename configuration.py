@@ -3,7 +3,7 @@ from typing import Union
 import yaml
 
 
-@dataclass(frozen=True)
+@dataclass()
 class ConfigData:
     keep_last_models: int
     step_save_ckpt: int
@@ -21,11 +21,14 @@ class ConfigData:
     n_layers: int
     p_dropout: float
     seq_len: int
+    activation: str
     vocab_file: str
     vocab_start_token_id: int
-    train_dataset_files: list[str]
     shuffle_dataset_on_load: bool
+    train_dataset_files: list[str]
+    train_sampling_ratio: float
     valid_dataset_files: list[str]
+    valid_sampling_ratio: float
 
 
 def load_config_file(config_file) -> ConfigData:
