@@ -77,14 +77,16 @@ def main(_config_file, _model_dir, _resume, memo):
     device = get_torch_device(config.cuda_index)
 
     get_logger().info('Used device type: %s', device.type)
-    model = lm_encoder(
+    origin_model = lm_encoder(
         config.d_model, config.h, config.ff, config.n_layers, len(vocab),
         padding_idx=vocab['__PAD__'], dropout_p=config.p_dropout,
         activation='gelu'
     )
     if config.compile_model:
-        model = torch.compile(model)
+        model = torch.compile(origin_model)
         get_logger().info('model compiled.')
+    else:
+        model = origin_model
     model.to(device=device)
 
     txt = f'model information\n{separator}\n'
@@ -207,8 +209,8 @@ def main(_config_file, _model_dir, _resume, memo):
 
                 # save checkpoint and validate.
                 if step > 1 and step % config.step_save_ckpt == 0:
-                    save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
-                    model_files = save_model(model, _model_dir, model_files, config.keep_last_models, step)
+                    save_checkpoint(origin_model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
+                    model_files = save_model(origin_model, _model_dir, model_files, config.keep_last_models, step)
                     get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
 
                     if valid_dataloader is not None:
@@ -240,7 +242,7 @@ def main(_config_file, _model_dir, _resume, memo):
     else:
         get_logger().info("All training finished.")
     finally:
-        save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
+        save_checkpoint(origin_model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
 
     sw.close()
 
