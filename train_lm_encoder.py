@@ -80,10 +80,9 @@ def main(_config_file, _model_dir, _resume, memo):
     model = lm_encoder(
         config.d_model, config.h, config.ff, config.n_layers, len(vocab),
         padding_idx=vocab['__PAD__'], dropout_p=config.p_dropout,
-        activation='relu'
+        activation='gelu'
     )
     if config.compile_model:
-        get_logger().info('compile model...')
         model = torch.compile(model)
         get_logger().info('model compiled.')
     model.to(device=device)
@@ -159,7 +158,7 @@ def main(_config_file, _model_dir, _resume, memo):
     get_logger().info('Dataset loaded. %s', datasets)
 
     purge_step = None if not resume else step
-    sw = SummaryWriter(os.path.join(_model_dir, 'logs'), purge_step=purge_step)
+    sw = SummaryWriter(_model_dir, purge_step=purge_step)
 
     sleep_between_step = .0
     train_loss = train_acc = val_loss = val_acc = .0
@@ -189,7 +188,7 @@ def main(_config_file, _model_dir, _resume, memo):
                 # change lr.
                 if scheduler:
                     scheduler.step(step / iters)
-                    
+
                 # logging per 20 steps.
                 if step % logging_interval == 0:
                     iterval_loss = train_interval_loss / logging_interval
@@ -205,7 +204,7 @@ def main(_config_file, _model_dir, _resume, memo):
                     elapsed_train = 0
                     train_interval_loss = .0
                     train_interval_acc = .0
-                
+
                 # save checkpoint and validate.
                 if step > 1 and step % config.step_save_ckpt == 0:
                     save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)

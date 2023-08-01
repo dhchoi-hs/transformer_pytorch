@@ -16,7 +16,7 @@ def run_step(a_data, model, criterion, optim=None, train_mode=True, device=None)
     pad_mask = (x != model.padding_idx).unsqueeze(-2).unsqueeze(-2)
     output = model(x, pad_mask)
 
-    y_masked = y.bool()
+    y_masked = y.nonzero(as_tuple=True)
     output_only_masked = output[y_masked]
     
     y_only_masked = y[y_masked]
@@ -31,10 +31,10 @@ def run_step(a_data, model, criterion, optim=None, train_mode=True, device=None)
 
     loss_item = loss.item()
 
-    output_labels = output_only_masked.argmax(dim=-1)
-    a = torch.count_nonzero(output_labels == y_only_masked)
-    acc = a.item() / y_only_masked.size(0)
-    # TODO: Add macro-average-acc?
+    with torch.no_grad():
+        output_labels = output_only_masked.argmax(dim=-1)
+        a = torch.count_nonzero(output_labels == y_only_masked)
+        acc = a.item() / y_only_masked.size(0)
 
     return loss_item, acc
 
