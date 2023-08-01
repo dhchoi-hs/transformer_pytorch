@@ -77,16 +77,17 @@ def train_n_val(hparams):
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     get_logger().info('Used device type: %s', device.type)
-    model = lm_encoder(
+    origin_model = lm_encoder(
         _config.d_model, _config.h, _config.ff, _config.n_layers, len(vocab),
         padding_idx=vocab['__PAD__'], dropout_p=_config.p_dropout,
         activation=_config.activation
     )
 
     if _config.compile_model:
-        get_logger().info('compile model...')
-        model = torch.compile(model)
+        model = torch.compile(origin_model)
         get_logger().info('model compiled.')
+    else:
+        model = origin_model
     model.to(device=device)
 
     # txt = f'model information\n{separator}\n'
@@ -175,10 +176,10 @@ def train_n_val(hparams):
                 # save checkpoint and validate.
                 if step > 1 and step % _config.step_save_ckpt == 0:
                     # save_checkpoint(
-                    #     model, os.path.join(_model_dir, 'checkpoint.pt'), step,
+                    #     origin_model, os.path.join(_model_dir, 'checkpoint.pt'), step,
                     #     current_epoch, optim, scheduler)
                     # model_files = save_model(
-                    #     model, _model_dir, model_files, _config.keep_last_models, step)
+                    #     origin_model, _model_dir, model_files, _config.keep_last_models, step)
                     # get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
 
                     if valid_dataloader is not None:
@@ -215,7 +216,7 @@ def train_n_val(hparams):
     else:
         get_logger().info("All training finished.")
     # finally:
-    #     save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step,
+    #     save_checkpoint(origin_model, os.path.join(_model_dir, 'checkpoint.pt'), step,
     #                     current_epoch, optim, scheduler)
 
 
@@ -240,10 +241,10 @@ def main(_config_file, _model_dir):
 
     train_dataset = MLMdatasetDynamic(
         g_config.train_dataset_files, vocab, g_config.vocab_start_token_id,
-        g_config.seq_len, True, g_config.train_sampling_ratio)
+        g_config.seq_len, g_config.shuffle_dataset_on_load, g_config.train_sampling_ratio)
     valid_dataset = MLMDatasetFixed(
         g_config.valid_dataset_files, vocab, g_config.vocab_start_token_id,
-        g_config.seq_len, True, g_config.valid_sampling_ratio)
+        g_config.seq_len, g_config.shuffle_dataset_on_load, g_config.valid_sampling_ratio)
 
     train_dataset_ref = ray.put(train_dataset)
     valid_dataset_ref = ray.put(valid_dataset)
