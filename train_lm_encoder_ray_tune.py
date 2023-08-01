@@ -37,6 +37,10 @@ epoch = 5
 def train_n_val(hparams):
     learning_rate = hparams['learning_rate']
     batch_size = hparams['batch_size']
+    layer = hparams['layer']
+    ff = hparams['ff']
+    h = hparams['h']
+    d_model = hparams['d_model']
 
     train_dataloader = DataLoader(ray.get(train_dataset_ref), batch_size)
     valid_dataloader = DataLoader(ray.get(valid_dataset_ref), batch_size)
@@ -48,6 +52,10 @@ def train_n_val(hparams):
     new_config.epoch = epoch
     new_config.learning_rate = learning_rate
     new_config.batch_size = batch_size
+    new_config.n_layers = layer
+    new_config.ff = ff
+    new_config.h = h
+    new_config.d_model = d_model
 
     if _config != new_config:
         new_conf = os.path.join(_model_dir, 'train_config.yaml')
@@ -166,12 +174,12 @@ def train_n_val(hparams):
 
                 # save checkpoint and validate.
                 if step > 1 and step % _config.step_save_ckpt == 0:
-                    save_checkpoint(
-                        model, os.path.join(_model_dir, 'checkpoint.pt'), step,
-                        current_epoch, optim, scheduler)
-                    model_files = save_model(
-                        model, _model_dir, model_files, _config.keep_last_models, step)
-                    get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
+                    # save_checkpoint(
+                    #     model, os.path.join(_model_dir, 'checkpoint.pt'), step,
+                    #     current_epoch, optim, scheduler)
+                    # model_files = save_model(
+                    #     model, _model_dir, model_files, _config.keep_last_models, step)
+                    # get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
 
                     if valid_dataloader is not None:
                         get_logger().info('%d/%d Start to validation', current_epoch, step)
@@ -206,11 +214,9 @@ def train_n_val(hparams):
         get_logger().error('Exception occured during training. %s', exception)
     else:
         get_logger().info("All training finished.")
-    finally:
-        save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step,
-                        current_epoch, optim, scheduler)
-
-    summary_writer.close()
+    # finally:
+    #     save_checkpoint(model, os.path.join(_model_dir, 'checkpoint.pt'), step,
+    #                     current_epoch, optim, scheduler)
 
 
 def main(_config_file, _model_dir):
@@ -246,9 +252,13 @@ def main(_config_file, _model_dir):
 
     config = {
         "learning_rate": tune.loguniform(1e-5, 1e-3),
-        "batch_size": tune.choice([128, 192, 256]),
+        "batch_size": tune.choice([128]),
+        'layer': tune.choice([6, 9, 12]),
+        'ff': tune.choice([2048, 3072]),
+        'h': tune.choice([8, 16]),
+        'd_model': tune.choice([1024, 1536])
     }
-    scheduler = ASHAScheduler(grace_period=2)
+    scheduler = ASHAScheduler(grace_period=100)
 
     tuner = tune.Tuner(
         tune.with_resources(
@@ -259,8 +269,8 @@ def main(_config_file, _model_dir):
             metric="loss",
             mode="min",
             scheduler=scheduler,
-            num_samples=6,
-            max_concurrent_trials=2
+            num_samples=200,
+            max_concurrent_trials=1
         ),
         run_config=RunConfig(storage_path=_model_dir if _model_dir else None),
         param_space=config,
