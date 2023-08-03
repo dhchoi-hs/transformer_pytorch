@@ -36,7 +36,6 @@ class PredictMasked:
             len(self.vocab), padding_idx=self.padding_idx, activation='gelu')
         self.model = torch.compile(self.model)
         self.model.to('cuda' if torch.cuda.is_available() else 'cpu')
-        self.model.cuda()
 
         # # # 3. load ckpt
         ckpt = checkpoint.load_ckpt(_model_file)

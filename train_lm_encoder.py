@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from hs_aiteam_pkgs.util.logger import init_logger, get_logger
 from hs_aiteam_pkgs.util.signal_handler import SigTermException
 from hs_aiteam_pkgs.model.lr_scheduler import create_lr_scheduler
-from dataset_loader.mlm_dataset import MLMdatasetDynamic, MLMDatasetFixed
+from dataset_loader import mlm_dataset
 from models.lm_encoder import lm_encoder
 from model.utils.get_torch_device import get_torch_device
 import configuration
@@ -107,8 +107,10 @@ def main(_config_file, _model_dir, _resume, memo):
 
     loss_fn = torch.nn.CrossEntropyLoss()
     loss_fn.to(device=device)
-    optim = torch.optim.Adam(model.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
-    scheduler = create_lr_scheduler(optim, config.lr_scheduler, **config.lr_scheduler_kwargs)
+    optim = torch.optim.Adam(model.parameters(), lr=config.learning_rate,
+                             weight_decay=config.weight_decay)
+    scheduler = create_lr_scheduler(optim, config.lr_scheduler,
+                                    **config.lr_scheduler_kwargs)
     
     if _resume:
         checkpoint = load_ckpt(os.path.join(_model_dir, 'checkpoint.pt'))
@@ -119,7 +121,8 @@ def main(_config_file, _model_dir, _resume, memo):
             model_epoch = re.search(r'(?<=^model_)\d+(?=.pt$)', os.path.basename(x))
             return 0 if not model_epoch else int(model_epoch.group())
         
-        model_files = sorted(glob.glob(os.path.join(_model_dir, 'model_*.pt')), key=get_epoch_of_model_file)
+        model_files = sorted(glob.glob(os.path.join(_model_dir, 'model_*.pt')),
+                             key=get_epoch_of_model_file)
         start_epoch = checkpoint['epoch']
         step = checkpoint['step']
         if scheduler and 'scheduler_state_dict' in checkpoint:
@@ -133,7 +136,8 @@ def main(_config_file, _model_dir, _resume, memo):
     del checkpoint
 
     # Expand GPU memory of model before load dataset.
-    dummy_tensor = torch.randint(0, len(vocab)-1, [config.batch_size, config.seq_len], device=device)
+    dummy_tensor = torch.randint(
+        0, len(vocab)-1, [config.batch_size, config.seq_len], device=device)
     try:
         model(dummy_tensor)
     except torch.cuda.OutOfMemoryError as oom_exception:
@@ -143,20 +147,29 @@ def main(_config_file, _model_dir, _resume, memo):
         del dummy_tensor
 
     get_logger().info('Loading dataset...')
-    train_dataloader = DataLoader(MLMdatasetDynamic(config.train_dataset_files,
-        vocab, config.vocab_start_token_id, config.seq_len, config.shuffle_dataset_on_load,
-        config.train_sampling_ratio), config.batch_size)
-    
-    valid_dataloader = DataLoader(MLMDatasetFixed(config.valid_dataset_files,
-        vocab, config.vocab_start_token_id, config.seq_len,
-        config.shuffle_dataset_on_load, config.valid_sampling_ratio), config.batch_size)
+    dataset = mlm_dataset.MLMdatasetDynamic(
+        config.train_dataset_files, vocab, config.vocab_start_token_id,
+        config.seq_len, config.shuffle_dataset_on_load, config.train_sampling_ratio)
+    train_dataloader = DataLoader(
+        dataset, config.batch_size, config.shuffle_dataset_on_load, num_workers=2,
+        collate_fn=mlm_dataset.create_collate_fn(config.seq_len, vocab['__PAD__']),
+        worker_init_fn=mlm_dataset.worker_init)
+
+    dataset = mlm_dataset.MLMDatasetFixed(
+        config.valid_dataset_files, vocab, config.vocab_start_token_id,
+        config.seq_len, config.shuffle_dataset_on_load, config.valid_sampling_ratio)
+    valid_dataloader = DataLoader(
+        dataset, config.batch_size, config.shuffle_dataset_on_load, num_workers=2,
+        collate_fn=mlm_dataset.create_collate_fn(config.seq_len, vocab['__PAD__']),
+        worker_init_fn=mlm_dataset.worker_init)
 
     datasets = ''
     if train_dataloader:
         iters = len(train_dataloader)
         datasets += f'trains: {len(train_dataloader.dataset)}, steps per epoch: {iters} '
     if valid_dataloader:
-        datasets += f'valids: {len(valid_dataloader.dataset)}, steps per epoch: {len(valid_dataloader)}'
+        datasets += f'valids: {len(valid_dataloader.dataset)}, '\
+            f'steps per epoch: {len(valid_dataloader)}'
     get_logger().info('Dataset loaded. %s', datasets)
 
     purge_step = None if not resume else step
@@ -195,8 +208,10 @@ def main(_config_file, _model_dir, _resume, memo):
                 if step % logging_interval == 0:
                     iterval_loss = train_interval_loss / logging_interval
                     interval_acc = train_interval_acc / logging_interval
-                    get_logger().info('%d/%d training loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
-                                      current_epoch, step, round(iterval_loss, 4), round(interval_acc, 4), round(elapsed_train,2))
+                    get_logger().info(
+                        '%d/%d training loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
+                        current_epoch, step, round(iterval_loss, 4),
+                        round(interval_acc, 4), round(elapsed_train,2))
                     sw.add_scalar('elapsed/train', elapsed_train, step)
                     sw.add_scalar('Loss/train', iterval_loss, step)
                     sw.add_scalar('Acc/train', interval_acc, step)
@@ -209,8 +224,10 @@ def main(_config_file, _model_dir, _resume, memo):
 
                 # save checkpoint and validate.
                 if step > 1 and step % config.step_save_ckpt == 0:
-                    save_checkpoint(origin_model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
-                    model_files = save_model(origin_model, _model_dir, model_files, config.keep_last_models, step)
+                    save_checkpoint(origin_model, os.path.join(_model_dir, 'checkpoint.pt'),
+                                    step, current_epoch, optim, scheduler)
+                    model_files = save_model(origin_model, _model_dir, model_files,
+                                             config.keep_last_models, step)
                     get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
 
                     if valid_dataloader is not None:
@@ -218,13 +235,17 @@ def main(_config_file, _model_dir, _resume, memo):
                         model.eval()
                         valid_started = time.time()
                         with torch.no_grad():
-                            val_loss, val_acc = run_epoch(valid_dataloader, model, loss_fn, None, False, sleep_between_step, device)
+                            val_loss, val_acc = run_epoch(
+                                valid_dataloader, model,loss_fn, None, False,
+                                sleep_between_step, device)
                         elapsed_valid = time.time() - valid_started
                         sw.add_scalar('elapsed/valid', elapsed_valid, step)
                         sw.add_scalar('Loss/valid', val_loss, step)
                         sw.add_scalar('Acc/valid', val_acc, step)
-                        get_logger().info('%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
-                                          current_epoch, step, round(val_loss, 4), round(val_acc, 4), round(elapsed_valid, 2))
+                        get_logger().info(
+                            '%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
+                            current_epoch, step, round(val_loss, 4), round(val_acc, 4),
+                            round(elapsed_valid, 2))
 
                         if train_dataloader is None:
                             break
@@ -242,7 +263,8 @@ def main(_config_file, _model_dir, _resume, memo):
     else:
         get_logger().info("All training finished.")
     finally:
-        save_checkpoint(origin_model, os.path.join(_model_dir, 'checkpoint.pt'), step, current_epoch, optim, scheduler)
+        save_checkpoint(origin_model, os.path.join(_model_dir, 'checkpoint.pt'),
+                        step, current_epoch, optim, scheduler)
 
     sw.close()
 
