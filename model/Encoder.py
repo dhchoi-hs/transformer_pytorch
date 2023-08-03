@@ -12,9 +12,9 @@ class EncoderLayer(nn.Module):
         super().__init__()
         self.d_model = d_model
         self.sublayer_connections = clones(
-            SublayerConnection(d_model, dropout_p=dropout_p), 2)
-        self.mha = MultiHeadAttention(d_model, h)
-        self.ff = FeedForward(d_model, d_ff, activation)
+            SublayerConnection(d_model, dropout_p=0), 2)
+        self.mha = MultiHeadAttention(d_model, h, dropout_p)
+        self.ff = FeedForward(d_model, d_ff, activation, dropout_p)
     
     def forward(self, x, mask=None):
         x = self.sublayer_connections[0](x, lambda _x: self.mha(_x, _x, _x, mask))

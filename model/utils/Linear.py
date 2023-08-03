@@ -11,7 +11,7 @@ class Linear(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.xavier_uniform_(self.weights, gain=nn.init.calculate_gain('relu'))
+        nn.init.xavier_uniform_(self.weights)
         nn.init.uniform_(self.bias, -1, 1)
     
     def forward(self, x):
