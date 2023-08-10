@@ -16,7 +16,7 @@ from ray.tune.schedulers import ASHAScheduler
 from hs_aiteam_pkgs.util.logger import init_logger, get_logger
 from hs_aiteam_pkgs.util.signal_handler import SigTermException
 from hs_aiteam_pkgs.model.lr_scheduler import create_lr_scheduler
-from dataset_loader.mlm_dataset import MLMdatasetDynamic, MLMDatasetFixed
+from dataset_loader import mlm_dataset
 from models.lm_encoder import lm_encoder
 from checkpoint import save_checkpoint, save_model
 from training_iter import run_step, run_epoch
@@ -27,29 +27,30 @@ torch.manual_seed(7)
 torch.cuda.manual_seed_all(7)
 
 
-train_dataset_ref: ray.ObjectRef = None
-valid_dataset_ref: ray.ObjectRef = None
-vocab: dict = None
-g_config: configuration.ConfigData = None
-epoch = 5
+def train_n_val(config, train_dataset, valid_dataset, vocab, train_config, epochs):
+    learning_rate = config['learning_rate']
+    batch_size = config['batch_size']
+    layer = config['layer']
+    ff = config['ff']
+    h = config['h']
+    d_model = config['d_model']
 
+    collate_fn = mlm_dataset.create_collate_fn(train_config.seq_len, vocab['__PAD__'])
 
-def train_n_val(hparams):
-    learning_rate = hparams['learning_rate']
-    batch_size = hparams['batch_size']
-    layer = hparams['layer']
-    ff = hparams['ff']
-    h = hparams['h']
-    d_model = hparams['d_model']
-
-    train_dataloader = DataLoader(ray.get(train_dataset_ref), batch_size)
-    valid_dataloader = DataLoader(ray.get(valid_dataset_ref), batch_size)
+    train_dataloader = DataLoader(
+        train_dataset, batch_size, train_config.shuffle_dataset_on_load,
+        num_workers=0, collate_fn=collate_fn,)
+        # worker_init_fn=mlm_dataset.worker_init)
+    valid_dataloader = DataLoader(
+        valid_dataset, batch_size, train_config.shuffle_dataset_on_load,
+        num_workers=0, collate_fn=collate_fn,)
+        # worker_init_fn=mlm_dataset.worker_init)
     _model_dir = os.path.join(session.get_trial_dir(), 'customs')
     os.makedirs(_model_dir, exist_ok=True)
 
-    _config = g_config
+    _config = train_config
     new_config = deepcopy(_config)
-    new_config.epoch = epoch
+    new_config.epoch = epochs
     new_config.learning_rate = learning_rate
     new_config.batch_size = batch_size
     new_config.n_layers = layer
@@ -131,7 +132,7 @@ def train_n_val(hparams):
     try:
         if step == 0:
             summary_writer.add_scalar('learning_rate', last_lr, step+1)
-        for current_epoch in range(1, epoch+1):
+        for current_epoch in range(1, epochs+1):
             summary_writer.add_scalar('epoch', current_epoch, step+1)
             for train_data in train_dataloader:
                 step += 1
@@ -221,11 +222,9 @@ def train_n_val(hparams):
 
 
 def main(_config_file, _model_dir):
-    global g_config, vocab, train_dataset_ref, valid_dataset_ref
-
     try:
-        g_config = configuration.load_config_file(_config_file)
-        configuration.validate_config(g_config)
+        train_config = configuration.load_config_file(_config_file)
+        configuration.validate_config(train_config)
     except TypeError as type_e:
         get_logger().error('key of configuration is missing. %s', type_e)
         sys.exit(1)
@@ -236,20 +235,17 @@ def main(_config_file, _model_dir):
         get_logger().error(assert_e)
         sys.exit(1)
 
-    with open(g_config.vocab_file, 'rt', encoding='utf8') as f:
+    with open(train_config.vocab_file, 'rt', encoding='utf8') as f:
         vocab = json.load(f)
 
-    train_dataset = MLMdatasetDynamic(
-        g_config.train_dataset_files, vocab, g_config.vocab_start_token_id,
-        g_config.seq_len, g_config.shuffle_dataset_on_load, g_config.train_sampling_ratio)
-    valid_dataset = MLMDatasetFixed(
-        g_config.valid_dataset_files, vocab, g_config.vocab_start_token_id,
-        g_config.seq_len, g_config.shuffle_dataset_on_load, g_config.valid_sampling_ratio)
-
-    train_dataset_ref = ray.put(train_dataset)
-    valid_dataset_ref = ray.put(valid_dataset)
-
-    del train_dataset, valid_dataset
+    train_dataset = mlm_dataset.MLMdatasetDynamic(
+        train_config.train_dataset_files, vocab,
+        train_config.vocab_start_token_id, train_config.seq_len,
+        train_config.shuffle_dataset_on_load, train_config.train_sampling_ratio)
+    valid_dataset = mlm_dataset.MLMDatasetFixed(
+        train_config.valid_dataset_files, vocab,
+        train_config.vocab_start_token_id, train_config.seq_len,
+        train_config.shuffle_dataset_on_load, train_config.valid_sampling_ratio)
 
     config = {
         "learning_rate": tune.loguniform(1e-5, 1e-3),
@@ -259,19 +255,24 @@ def main(_config_file, _model_dir):
         'h': tune.choice([8, 16]),
         'd_model': tune.choice([1024, 1536])
     }
-    scheduler = ASHAScheduler(grace_period=100)
+    scheduler = ASHAScheduler()
 
     tuner = tune.Tuner(
         tune.with_resources(
-            tune.with_parameters(train_n_val),
-            resources={'gpu': 1}
+            tune.with_parameters(train_n_val,
+                                 train_dataset=train_dataset,
+                                 valid_dataset=valid_dataset, 
+                                 vocab=vocab,
+                                 train_config=train_config,
+                                 epochs=5,),
+            resources={'cpu': 2}
         ),
         tune_config=tune.TuneConfig(
             metric="loss",
             mode="min",
             scheduler=scheduler,
-            num_samples=200,
-            max_concurrent_trials=1
+            num_samples=100,
+            max_concurrent_trials=2
         ),
         run_config=RunConfig(storage_path=_model_dir if _model_dir else None),
         param_space=config,
