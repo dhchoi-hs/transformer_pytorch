@@ -12,7 +12,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from hs_aiteam_pkgs.util.logger import init_logger, get_logger
-from hs_aiteam_pkgs.util.signal_handler import SigTermException
+from hs_aiteam_pkgs.util.signal_handler import SigTermException, catch_kill_signal
 from hs_aiteam_pkgs.model.lr_scheduler import create_lr_scheduler
 from dataset_loader import mlm_dataset
 from models.lm_encoder import lm_encoder
@@ -24,6 +24,7 @@ from training_iter import run_step, run_epoch
 
 torch.manual_seed(7)
 torch.cuda.manual_seed_all(7)
+catch_kill_signal()
 
 
 def main(_config_file, _model_dir, _resume, memo):
@@ -78,6 +79,11 @@ def main(_config_file, _model_dir, _resume, memo):
     device = get_torch_device(config.cuda_index)
 
     get_logger().info('Used device type: %s', device.type)
+    # model = lm_encoder_torch(
+    #     config.d_model, config.h, config.ff, config.n_layers, len(vocab),
+    #     padding_idx=vocab['__PAD__'], dropout_p=config.p_dropout,
+    #     activation='gelu'
+    # )
     origin_model = lm_encoder(
         config.d_model, config.h, config.ff, config.n_layers, len(vocab),
         padding_idx=vocab['__PAD__'], dropout_p=config.p_dropout,

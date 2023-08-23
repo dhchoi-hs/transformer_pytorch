@@ -1,23 +1,32 @@
 import json
 import requests
 import torch
-from dataset_loader.mlm_dataset import mlm_dataloader
+from torch.utils.data import DataLoader
+from dataset_loader import mlm_dataset
 import configuration
+import logging
+import tqdm
+logging.getLogger().handlers.clear()
 
-
-config_file = "/data/dhchoi/trained/sunny_side_up/v5k_bat128_d1024_h8_lyr6_ff2048_lr1e-4decay0.9_newloader/config_ln_encoder2.yaml"
-save_file = 'outttt_tmp.tsv'
+config_file = "/data/dhchoi/trained/sunny_side_up/v5k_bat128_d1024_h8_lyr6_ff2048_lr2e-4dcosinelr/config_ln_encoder.yaml"
+save_file = 'outttt_n.tsv'
 
 
 config = configuration.load_config_file(config_file)
 with open(config.vocab_file, 'rt') as f:
     vocab = json.load(f)
 id2token = {v: k for k, v in vocab.items()}
-train_dataloader = mlm_dataloader(
-    config.train_dataset_files, vocab, config.vocab_start_token_id,
-    config.seq_len, config.batch_size, config.shuffle_dataset_on_load, dynamic_masking=True
-)
-
+# train_dataloader = mlm_dataloader(
+#     config.train_dataset_files, vocab, config.vocab_start_token_id,
+#     config.seq_len, config.batch_size, config.shuffle_dataset_on_load, dynamic_masking=True
+# )
+dataset = mlm_dataset.MLMdatasetDynamic(
+        config.train_dataset_files, vocab, config.vocab_start_token_id,
+        config.seq_len, config.shuffle_dataset_on_load)#, config.train_sampling_ratio)
+train_dataloader = DataLoader(
+        dataset, config.batch_size, config.shuffle_dataset_on_load, num_workers=2,
+        collate_fn=mlm_dataset.create_collate_fn(config.seq_len, vocab['__PAD__']),
+        worker_init_fn=mlm_dataset.worker_init)
 # valid_dataloader = mlm_dataloader(
 #         config.valid_dataset_files, vocab, config.vocab_start_token_id,
 #         config.seq_len, config.batch_size, dynamic_masking=False
@@ -26,7 +35,7 @@ train_dataloader = mlm_dataloader(
 f = open(save_file, 'wt', encoding='utf8')
 data = ['input\tpredicted\tdetails\n']
 try:
-    for x, y in train_dataloader:
+    for x, y in tqdm.tqdm(train_dataloader):
         for _x, _y in zip(x, y):
             input_seq = torch.where(_y > 0, _y, _x)
             input_seq = [id2token[token_id.item()] for token_id in input_seq]
@@ -52,7 +61,6 @@ try:
             if len(data) >= 1000:
                 f.writelines(data)
                 data.clear()
-                print(f'{len(train_dataloader)}')
 except KeyboardInterrupt:
     pass
 

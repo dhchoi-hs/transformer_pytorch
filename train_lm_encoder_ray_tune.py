@@ -4,15 +4,18 @@ import argparse
 import json
 import time
 from copy import deepcopy
+from itertools import count
 import yaml
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
-import ray
 from ray import tune
 from ray.air import session
 from ray.air import RunConfig
+from ray.tune.search.bayesopt import BayesOptSearch
+from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.schedulers import ASHAScheduler
+from ray.tune.stopper import TrialPlateauStopper
 from hs_aiteam_pkgs.util.logger import init_logger, get_logger
 from hs_aiteam_pkgs.util.signal_handler import SigTermException
 from hs_aiteam_pkgs.model.lr_scheduler import create_lr_scheduler
@@ -106,6 +109,17 @@ def train_n_val(config, train_dataset, valid_dataset, vocab, train_config, epoch
 
     get_logger().info("Number of model parameters: %s", format(num_params, ','))
 
+    # Expand GPU memory of model before load dataset.
+    dummy_tensor = torch.randint(
+        0, len(vocab)-1, [config.batch_size, config.seq_len], device=device)
+    try:
+        model(dummy_tensor)
+    except torch.cuda.OutOfMemoryError as oom_exception:
+        get_logger().error('CUDA out of memory before load dataset: %s', oom_exception)
+        sys.exit(1)
+    else:
+        del dummy_tensor
+
     loss_fn = torch.nn.CrossEntropyLoss()
     loss_fn.to(device=device)
     optim = torch.optim.Adam(model.parameters(), lr=_config.learning_rate,
@@ -122,21 +136,16 @@ def train_n_val(config, train_dataset, valid_dataset, vocab, train_config, epoch
     logging_interval = 20
     elapsed_train = 0
 
-    last_lr = optim.param_groups[0]["lr"]
-    last_written_lr = None
-
+    it = range(1, epochs+1) if epochs is not None else count(1)
     step = 0
     iters = len(train_dataloader)
     max_acc = 0
     min_loss = float('inf')
     try:
-        if step == 0:
-            summary_writer.add_scalar('learning_rate', last_lr, step+1)
-        for current_epoch in range(1, epochs+1):
+        for current_epoch in it:
             summary_writer.add_scalar('epoch', current_epoch, step+1)
             for train_data in train_dataloader:
                 step += 1
-                last_lr = optim.param_groups[0]["lr"]
                 model.train()
                 training_started = time.time()
                 train_loss, train_acc = run_step(train_data, model, loss_fn,
@@ -162,14 +171,12 @@ def train_n_val(config, train_dataset, valid_dataset, vocab, train_config, epoch
                     summary_writer.add_scalar('elapsed/train', elapsed_train, step)
                     summary_writer.add_scalar('Loss/train', iterval_loss, step)
                     summary_writer.add_scalar('Acc/train', interval_acc, step)
+                    summary_writer.add_scalar('learning_rate', optim.param_groups[0]["lr"], step)
                     results = {
                         'loss': iterval_loss,
                         'acc': interval_acc
                     }
                     session.report(results)
-                    if last_written_lr != last_lr:
-                        summary_writer.add_scalar('learning_rate', last_lr, step)
-                        last_written_lr = last_lr
                     elapsed_train = 0
                     train_interval_loss = .0
                     train_interval_acc = .0
@@ -250,31 +257,34 @@ def main(_config_file, _model_dir):
     config = {
         "learning_rate": tune.loguniform(1e-5, 1e-3),
         "batch_size": tune.choice([128]),
-        'layer': tune.choice([6, 9, 12]),
-        'ff': tune.choice([2048, 3072]),
-        'h': tune.choice([8, 16]),
-        'd_model': tune.choice([1024, 1536])
+        'layer': tune.choice([3, 6, 9, 12]),
+        'ff': tune.choice([2048, 3072, 4096]),
+        'h': tune.choice([8, 12, 16]),
+        'd_model': tune.choice([512, 768, 1024, 1536])
     }
-    scheduler = ASHAScheduler()
-
+    # scheduler = ASHAScheduler()
+    algo = HyperOptSearch(metric='acc', mode='max')
+    stopper = TrialPlateauStopper('acc', std=0.005, num_results=100, grace_period=100)
     tuner = tune.Tuner(
         tune.with_resources(
             tune.with_parameters(train_n_val,
                                  train_dataset=train_dataset,
-                                 valid_dataset=valid_dataset, 
+                                 valid_dataset=valid_dataset,
                                  vocab=vocab,
                                  train_config=train_config,
-                                 epochs=5,),
-            resources={'cpu': 2}
+                                 epochs=15,),
+            resources={'gpu': 1}
         ),
         tune_config=tune.TuneConfig(
-            metric="loss",
-            mode="min",
-            scheduler=scheduler,
-            num_samples=100,
-            max_concurrent_trials=2
+            metric="acc",
+            mode="max",
+            # scheduler=scheduler,
+            search_alg=algo,
+            num_samples=200,
+            max_concurrent_trials=1
         ),
-        run_config=RunConfig(storage_path=_model_dir if _model_dir else None),
+        run_config=RunConfig(storage_path=_model_dir if _model_dir else None,
+                             stop=stopper),
         param_space=config,
     )
     results = tuner.fit()
