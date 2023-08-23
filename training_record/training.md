@@ -284,6 +284,383 @@ seq_len: 256
 <p align="center"><img src="images/case11_loss.png" width="800"/></p>
 <p align="center"><img src="images/case11_acc.png" width="800"/></p>
 <p align="center"><img src="images/case11_lr.png" width="800"/></p>
+  - relative
 <p align="center"><img src="images/case11_loss_relative.png" width="800"/></p>
 <p align="center"><img src="images/case11_acc_relative.png" width="800"/></p>
-<p align="center"><img src="images/case11_lr_relative.png" width="800"/></p>
+<p align="center"><img src="images/case11_lr_relative.png" width="400"/></p>
+
+### case 12
+ - description:
+   - size of dataset 1/5
+   - learning rate scheduler - cosine annealing
+   - compare learning rate
+- date: -
+- directory: output/v5k_lr_e04_batch256, output/v5k_lr_e04_batch256_ccs2
+- dataset:
+  - 1/5 of only en corpus
+  - ko&en unified BPE vocab token 5k(size: 7458)
+  - trains: 288435, steps per epoch: 1127 valids: 32048, steps per epoch: 126
+- params:
+  > batch_size: 256  
+learning_rate: $5*10^{-4}$ and decay 0 vs $1*10^{-3}$ and decay 0.75  
+weight_decay: 0  
+d_model: 512  
+h: 8  
+ff: 2048  
+n_layers: 6  
+p_dropout: 0  
+seq_len: 256  
+- result: 
+  - higher lr is better in beginning. score gets worse as lr decrease.
+  - red: $1*10^{-3}$ and decay 0.75 lr, white: $5*10^{-4}$ and decay 0
+<p align="center"><img src="images/case12_loss.png" width="800"/></p>
+<p align="center"><img src="images/case12_acc.png" width="800"/></p>
+<p align="center"><img src="images/case12_lr.png" width="400"/></p>
+
+### case 13
+ - description:
+   - size of dataset 1/5
+   - learning rate scheduler - cosine annealing
+- date: -
+- directory: v5k_batch128_lr12, v5k_batch64_lr12, v5k_bat128_lyr12_h4, v5k_bat128_lyr12_ff1024
+- dataset:
+  - 1/5 of only en corpus
+  - ko&en unified BPE vocab token 5k(size: 7458)
+  - trains: 288435, steps per epoch: 1127 valids: 32048, steps per epoch: 126
+- params:
+  > batch_size: 64 vs 128  
+learning_rate: $5*10^{-4}$ and decay 0.95  
+weight_decay: 0  
+d_model: 512  
+h: 8 vs 4  
+ff: 2048 vs 1024  
+n_layers: 12  
+p_dropout: 0  
+seq_len: 256  
+- result: 
+  - blue: batch128, h8, ff2048, red: batch 64 from blue lr, green: h4 from blue, white: ff1024 from blue
+  - blue(batch128, h8, ff2048) is best.
+  - layer 6 of case 12 is higher max acc score.
+<p align="center"><img src="images/case13_loss.png" width="800"/></p>
+<p align="center"><img src="images/case13_acc.png" width="800"/></p>
+<p align="center"><img src="images/case13_lr.png" width="400"/></p>
+  - relative
+<p align="center"><img src="images/case13_loss_relative.png" width="800"/></p>
+<p align="center"><img src="images/case13_acc_relative.png" width="800"/></p>
+<p align="center"><img src="images/case13_lr_relative.png" width="400"/></p>
+
+### case 14
+ - description:
+   - size of dataset 1/5
+- date: -
+- directory: v5k_bat128_d3072_h4_lyr3, v5k_bat128_d256_h8_lyr22, v5k_bat128_d1024_h4_lyr3, v5k_bat128_d1024_h8_lyr6
+- dataset:
+  - 1/5 of only en corpus
+  - ko&en unified BPE vocab token 5k(size: 7458)
+- params:
+  > batch_size: 128  
+learning_rate: $5*10^{-4}$ and (exponential decay) 0.99~0.97  
+weight_decay: 0  
+ff: 2048  
+p_dropout: 0  
+seq_len: 256  
+- result: 
+  - red: d3072, h4, lyr3, blue: d256, h8, lyr22, pink: d1024,h4,lyr3, green: d1024, h8, lyr6
+  - blue is best, but d1024, h8, lyr6 is better.
+  - pink and red is high lr.
+<p align="center"><img src="images/case14_loss.png" width="800"/></p>
+<p align="center"><img src="images/case14_acc.png" width="800"/></p>
+<p align="center"><img src="images/case14_lr.png" width="400"/></p>
+
+### case 15
+ - description:
+   - size of dataset 1/5
+- date: -
+- directory: v5k_bat64_d1024_h16_lyr16, v5k_bat64_d512_h8_lyr30, v5k_bat128_d1024_h8_lyr6_lr1e-4, v5k_bat64_d1024_h16_lyr16_lr5e-5, v5k_bat128_d1024_h8_lyr8_lr1e-4
+- dataset:
+  - 1/5 of only en corpus
+  - ko&en unified BPE vocab token 5k(size: 7458)
+- params:
+  > batch_size: 128  
+learning_rate: $5*10^{-4}$ and (exponential decay) 0.99~0.97  
+weight_decay: 0  
+ff: 2048  
+p_dropout: 0  
+seq_len: 256  
+- result: 
+  - case:
+    - white: batch64, d1024, h16, lyr16
+    - orange: batch64, d512, h8, lyr30
+    - blue: batch128, d1024, h8, lyr6, lr1e-4
+    - red: batch64, d1024, h16, lyr16, lr5e-5
+    - sky: batch128, d1024, h8, lyr8, lr1e-4 
+  - blue is best. sky has 2 more layers, but it is not better than blu.
+<p align="center"><img src="images/case15_loss.png" width="800"/></p>
+<p align="center"><img src="images/case15_acc.png" width="800"/></p>
+<p align="center"><img src="images/case15_lr.png" width="400"/></p>
+
+### case 16
+ - description:
+   - size of dataset 1/5 and full
+- date: -
+- directory: v5k_bat128_d1024_h8_lyr6_lr1e-4_L21e-5,dr0.1 , v5k_bat128_d1024_h8_lyr6_lr1e-4_L21e-6,dr0.1, v5k_bat128_d1024_h8_lyr6_lr1e-4_full
+- dataset:
+  - 1/5 of only en corpus and full
+  - ko&en unified BPE vocab token 5k(size: 7458)
+- params:
+  > batch_size: 128  
+learning_rate: $1*10^{-4}$ and (exponential decay) 0.99~0.97  
+weight_decay: $1*10^{-5}$ vs $1*10^{-6}$  
+d_model: 1024  
+h: 8  
+ff: 2048  
+layer: 6
+p_dropout: 0.1  
+seq_len: 256  
+- result: 
+  - case:
+    - pink: l2 weight decay $1*10^{-5}$
+    - gray: l2 weight decay $1*10^{-6}$
+    - green: l2 weight decay 0, dropout 0, full dataset corpus
+    - blue: same as blue in case 15
+  - train acc/loss got worse, valid acc/valid got better in regularization.
+  - training full corpus got score like giving regularization.
+<p align="center"><img src="images/case16_loss.png" width="800"/></p>
+<p align="center"><img src="images/case16_acc.png" width="800"/></p>
+<p align="center"><img src="images/case16_lr.png" width="400"/></p>
+
+### case 17
+ - description:
+   - 
+- date: -
+- directory: v5k_bat128_d1024_h8_lyr12_lr1e-4_full, v5k_bat256_d1024_h8_lyr6_lr1e-4_full, v5k_bat256_d1024_h8_lyr6_lr5e-4_full, v5k_bat256_d1024_h8_lyr6_lr2e-4_full
+- dataset:
+  - full only en corpus
+  - ko&en unified BPE vocab token 5k(size: 7458)
+- params:
+  >  
+learning_rate: (warm exponential decay) 0.99  
+weight_decay: 0  
+d_model: 1024  
+h: 8  
+ff: 2048  
+p_dropout: 0.0  
+seq_len: 256  
+- result: 
+  - case:
+    - orange: batch 128, lyr 12, lr $1*10^{-4}$
+    - blue: batch 256, lyr 6, lr $1*10^{-4}$
+    - red: batch 256, lyr 6, lr $5*10^{-4}$
+    - sky: batch 256, lyr 6, lr $2*10^{-4}$
+  - blue got best score.
+<p align="center"><img src="images/case17_loss.png" width="800"/></p>
+<p align="center"><img src="images/case17_acc.png" width="800"/></p>
+<p align="center"><img src="images/case17_lr.png" width="400"/></p>
+
+### case 18
+ - description:
+   - use swish activation function
+- date: -
+- directory: v5k_bat128_d1024_h8_lyr6_lr1e-4_full_swish
+- dataset:
+  - full only en corpus
+  - ko&en unified BPE vocab token 5k(size: 7458)
+- params:
+  >  batch_size: 128
+learning_rate: $1*10^{-4}$ (warm exponential decay) 0.99  
+weight_decay: 0  
+d_model: 1024
+h: 8
+ff: 2048
+layers: 6
+p_dropout: 0.0  
+seq_len: 256  
+- result: 
+  - case:
+    - pink: swish
+    - green: relu
+<p align="center"><img src="images/case18_loss.png" width="800"/></p>
+<p align="center"><img src="images/case18_acc.png" width="800"/></p>
+<p align="center"><img src="images/case18_lr.png" width="400"/></p>
+
+### case 19
+ - description:
+   - 
+- date: -
+- directory: v5k_bat128_d2048_h16_lyr6_lr1e-4_full, v5k_bat128_d1024_h8_lyr6_lr1e-4_full_ff3072, v5k_bat128_d1536_h12_lyr6_lr1e-4_ff3072_full, v5k_bat128_d1024_h16_lyr6_lr5e-5_ff3072_full
+- dataset:
+  - full only en corpus
+  - ko&en unified BPE vocab token 5k(size: 7458)
+- params:
+  >  
+learning_rate: (warm exponential decay) 0.99  
+weight_decay: 0  
+layers: 6
+p_dropout: 0.0  
+seq_len: 256  
+- result: 
+  - case:
+    - green: d 2048, h16, ff2048, lr $1*10^{-4}$
+    - blue: d 1024, h8, ff3072, lr $1*10^{-4}$
+    - red: d 1536, h12, ff3072, lr $1*10^{-4}$
+    - pink: d 1024, h16, ff3072, lr $5*10^{-5}$
+  - red got best score. but blue in case 17 is better.
+<p align="center"><img src="images/case19_loss.png" width="800"/></p>
+<p align="center"><img src="images/case19_acc.png" width="800"/></p>
+<p align="center"><img src="images/case19_lr.png" width="400"/></p>
+
+### case 20
+ - description:
+   - compare dynamic masking vs static masking, torch compiled model vs not compiled model
+- date: -
+- directory: v5k_bat128_d1024_h8_lyr6_lr1e-4_full_staticmasked, v5k_bat128_d1024_h8_lyr6_ff2048_lr1e-4_full_nocomp
+- dataset:
+  - full only en corpus
+  - ko&en unified BPE vocab token 5k(size: 7458)
+- params:
+  > batch size: 128  
+learning_rate: $1*10^{-4}$ (warm exponential decay) 0.99  
+weight_decay: 0  
+d_model: 1024
+h: 8
+ff: 2048
+layers: 6
+p_dropout: 0.0  
+seq_len: 256  
+- result: 
+  - case:
+    - green: static masking
+    - blue: dynamic masking, compiled model
+    - white: not compiled model
+  - static masking and not compiled model didn't get better score.
+<p align="center"><img src="images/case20_loss.png" width="800"/></p>
+<p align="center"><img src="images/case20_acc.png" width="800"/></p>
+
+### case 21
+ - description:
+   - compare implemented encoder module and torch nn encoder module.
+   - compare embedding layer and linear transform in output layer.
+- date: -
+- directory: v5k_bat128_d1024_h8_lyr6_ff2048_lr1e-4decay0.9_torchmodule_full_lin, v5k_bat128_d1024_h8_lyr6_ff2048_lr1e-4decay0.95_full_lin
+- dataset:
+  - full only en corpus
+  - ko&en unified BPE vocab token 5k(size: 7458)
+- params:
+  >  batch size: 128  
+learning_rate: $1*10^{-4}$ (warm exponential decay) 0.99  
+weight_decay: 0  
+d_model: 1024
+h: 8
+ff: 2048
+layers: 6
+p_dropout: 0.0  
+seq_len: 256  
+- result: 
+  - case:
+    - white: use torch nn.TransformerEncoder(nn.TransformerEncoderLayer())
+    - orange: use linear transform instead of embedding in output layer.
+    - read: use implemented encoder module and embedding in output layer.
+  - using torch encoder is better slightly.
+<p align="center"><img src="images/case21_loss.png" width="800"/></p>
+<p align="center"><img src="images/case21_acc.png" width="800"/></p>
+
+### case 22
+ - description:
+   - using dataset corpus only news domain 800k
+- date: -
+- directory: v5k_bat128_d1024_h8_lyr9_ff2048_lr1e-4decay0.9_news_fixed
+- dataset:
+  - 800k only en & only news domain corpus
+  - ko&en unified BPE vocab token 5k(size: 7458)
+- params:
+  >  batch size: 128  
+learning_rate: $1*10^{-4}$ (warm exponential decay) 0.99  
+weight_decay: 0  
+d_model: 1024
+h: 8
+ff: 2048
+layers: 9
+p_dropout: 0.0  
+seq_len: 256  
+- result: 
+  - case:
+    - red: dataset corpus only news 800k
+    - sky: full dataset
+<p align="center"><img src="images/case22_loss.png" width="800"/></p>
+<p align="center"><img src="images/case22_acc.png" width="800"/></p>
+
+### case 23
+ - description:
+   - fix a bug that text and label in dataloader does not match(https://github.com/dhchoi-hs/transformer_pytorch/commit/717c64529d0eeb42b8736404718fffc682b84cf5)
+- date: -
+- directory: v5k_bat128_d1024_h8_lyr6_ff2048_lr1e-4decay0.9_newloader
+- dataset:
+  - full only en corpus
+  - ko&en unified BPE vocab token 5k(size: 7458)
+- params:
+  >  batch size: 128  
+learning_rate: $1*10^{-4}$ (warm exponential decay) 0.99  
+weight_decay: 0  
+d_model: 1024
+h: 8
+ff: 2048
+layers: 6
+p_dropout: 0.0  
+seq_len: 256  
+- result: 
+  - case:
+    - pink: fixed bug
+<p align="center"><img src="images/case23_loss.png" width="800"/></p>
+<p align="center"><img src="images/case23_acc.png" width="800"/></p>
+
+### case 24
+ - description:
+   - difference vocab size 5k, 10k, 20k
+- date: -
+- directory: v10k_bat128_d1024_h8_lyr6_ff2048_lr1e-4decay0.85_only_en_vocab, v20k_bat128_d1024_h8_lyr6_ff2048_lr1e-4decay0.85_only_en_vocab
+- dataset:
+  - full only en corpus
+  - ko&en unified BPE vocab token 5k(size: 7458) and only en BPE vocab token 10k, 20k
+- params:
+  >  batch size: 128  
+learning_rate: $1*10^{-4}$ (warm exponential decay) 0.99  
+weight_decay: 0  
+d_model: 1024
+h: 8
+ff: 2048
+layers: 6
+p_dropout: 0.0  
+seq_len: 256  
+- result: 
+  - case:
+    - orange: vocab 10k
+    - blue: vocab 20k
+    - pink: vocab 5k
+  - the larger vocab size, the worse score
+<p align="center"><img src="images/case24_loss.png" width="800"/></p>
+<p align="center"><img src="images/case24_acc.png" width="800"/></p>
+
+### case 25
+ - description:
+   - use lr scheduler - cosine annealing warm restart
+- date: -
+- directory: v5k_bat128_d1024_h8_lyr6_ff2048_lr2e-4dcosinelr, v5k_bat128_d1024_h8_lyr6_ff2048_lr2e-4coslr_dropout0.1_l21e-5
+- dataset:
+  - full only en corpus
+  - ko&en unified BPE vocab token 5k(size: 7458)
+- params:
+  >  batch size: 128  
+learning_rate: $2*10^{-4}$ (cosine annealing warm restart decay-  T_0: 15, T_mult: 1, eta_min: 5.0e-6)  
+d_model: 1024
+h: 8
+ff: 2048
+layers: 6
+seq_len: 256  
+- result: 
+  - case:
+    - **white: dropout 0, L2 weight decay 0** (best model)
+    - red: dropout 0.1, L2 weight decay 1e-5
+    - pink: exponential lr decay, no regularization
+<p align="center"><img src="images/case25_loss.png" width="800"/></p>
+<p align="center"><img src="images/case25_acc.png" width="800"/></p>
+<p align="center"><img src="images/case25_lr.png" width="400"/></p>
