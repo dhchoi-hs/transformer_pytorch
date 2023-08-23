@@ -1,7 +1,7 @@
 from torch import nn
 from model.utils.SublayerConnection import SublayerConnection
 from model.utils.clone_layers import clones
-from model.utils.FeedForward import FeedForward
+from model.FeedForward import FeedForward
 from model.Attention import MultiHeadAttention
 from model.utils.LayerNorm import LayerNorm
 

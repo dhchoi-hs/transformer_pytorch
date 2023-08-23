@@ -5,7 +5,7 @@ from PositionalEncoding import PositionalEncoding
 from utils.get_torch_device import get_torch_device
 from Unicoder import Unicoder, UnicoderLayer
 from Generator import Generator
-from utils.FeedForward import FeedForward
+from model.FeedForward import FeedForward
 from Attention import MultiHeadAttention
 from EncoderDecoder_unicoder import EncoderDecoder_unicoder
 
