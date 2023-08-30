@@ -17,6 +17,7 @@ from hs_aiteam_pkgs.model.lr_scheduler import create_lr_scheduler
 from dataset_loader import tweet_disaster_dataset
 from model.utils.get_torch_device import get_torch_device
 import configuration
+import configuration_fine_tuning
 from checkpoint import load_ckpt, save_checkpoint, save_model
 from training_iter import run_step_fine_tuning, run_epoch
 from models.tweet_disaster_model import TweetDisasterClassifierCNN
@@ -26,18 +27,25 @@ torch.cuda.manual_seed_all(7)
 catch_kill_signal()
 
 
-def main(_config_file, pre_trained_model_file, _model_dir, _resume):
+def main(_pre_trained_config, pre_trained_model_file, _fine_tuning_config, _model_dir, _resume):
     try:
-        config = configuration.load_config_file(_config_file)
-        configuration.validate_config(config)
+        pre_train_config = configuration.load_config_file(_pre_trained_config)
+        configuration.validate_config(pre_train_config)
     except TypeError as type_e:
-        get_logger().error('key of configuration is missing. %s', type_e)
-        sys.exit(1)
-    except FileNotFoundError:
-        get_logger().error('Config file not exists. %s', _config_file)
+        get_logger().error('key of pre trained configuration is missing. %s', type_e)
         sys.exit(1)
     except AssertionError as assert_e:
-        get_logger().error(assert_e)
+        get_logger().error('error loading pre train config.: %s', assert_e)
+        sys.exit(1)
+
+    try:
+        fine_tuning_config = configuration_fine_tuning.load_config_file(_fine_tuning_config)
+        configuration_fine_tuning.validate_config(fine_tuning_config)
+    except TypeError as type_e:
+        get_logger().error('key of pre fine tuning configuration is missing. %s', type_e)
+        sys.exit(1)
+    except AssertionError as assert_e:
+        get_logger().error('error loading fine tuning config.: %s', assert_e)
         sys.exit(1)
 
     if not _model_dir and not _resume:
@@ -46,7 +54,7 @@ def main(_config_file, pre_trained_model_file, _model_dir, _resume):
         get_logger().error('No model_dir arg for resume.')
         sys.exit()
 
-    with open(config.vocab_file, 'rt', encoding='utf8') as f:
+    with open(pre_train_config.vocab_file, 'rt', encoding='utf8') as f:
         vocab = json.load(f)
 
     if os.path.exists(_model_dir):
@@ -59,27 +67,29 @@ def main(_config_file, pre_trained_model_file, _model_dir, _resume):
             sys.exit()
         else:
             os.makedirs(_model_dir, exist_ok=True)
-            shutil.copy(_config_file, _model_dir)
+            shutil.copy(_pre_trained_config, _model_dir)
+            shutil.copy(_fine_tuning_config, _model_dir)
 
     init_logger(os.path.join(_model_dir, 'log.log'))
     get_logger().info('Training started.')
     separator = '='*80
     txt = 'configuration information\n'
     txt += f'{separator}\n'
-    for k, v in configuration.convert_to_dict(config).items():
+    for k, v in configuration.convert_to_dict(pre_train_config).items():
+        txt += f'{k:<22}: {v}\n'
+    txt += f'{separator}\n'
+    for k, v in configuration_fine_tuning.convert_to_dict(fine_tuning_config).items():
         txt += f'{k:<22}: {v}\n'
     txt += f'{separator}'
     get_logger().info(txt)
 
     # TODO: use parallel gpu
-    device = get_torch_device(config.cuda_index)
-    device = torch.device('cpu')
+    device = get_torch_device(fine_tuning_config.cuda_index)
     get_logger().info('Used device type: %s', device.type)
 
-    origin_model = TweetDisasterClassifierCNN.from_pretrained(pre_trained_model_file, config)
-    # origin_model = TweetDisasterClassifierMLP.from_pretrained(pre_trained_model_file, config)
+    origin_model = TweetDisasterClassifierCNN.from_pretrained(pre_trained_model_file, pre_train_config)
 
-    if not config.compile_model:
+    if fine_tuning_config.compile_model:
         model = torch.compile(origin_model)
         get_logger().info('model compiled.')
     else:
@@ -103,10 +113,10 @@ def main(_config_file, pre_trained_model_file, _model_dir, _resume):
 
     loss_fn = torch.nn.BCELoss()
     loss_fn.to(device=device)
-    optim = torch.optim.Adam(model.parameters(), lr=config.learning_rate,
-                             weight_decay=config.weight_decay)
-    scheduler = create_lr_scheduler(optim, config.lr_scheduler,
-                                    **config.lr_scheduler_kwargs)
+    optim = torch.optim.Adam(model.parameters(), lr=fine_tuning_config.learning_rate,
+                             weight_decay=fine_tuning_config.weight_decay)
+    scheduler = create_lr_scheduler(optim, fine_tuning_config.lr_scheduler,
+                                    **fine_tuning_config.lr_scheduler_kwargs)
 
     if _resume:
         checkpoint = load_ckpt(os.path.join(_model_dir, 'checkpoint.pt'))
@@ -133,7 +143,7 @@ def main(_config_file, pre_trained_model_file, _model_dir, _resume):
 
     # Expand GPU memory of model before load dataset.
     dummy_tensor = torch.randint(
-        0, len(vocab)-1, [config.batch_size, config.seq_len], device=device)
+        0, len(vocab)-1, [fine_tuning_config.batch_size, fine_tuning_config.seq_len], device=device)
     try:
         model(dummy_tensor)
     except torch.cuda.OutOfMemoryError as oom_exception:
@@ -144,20 +154,20 @@ def main(_config_file, pre_trained_model_file, _model_dir, _resume):
 
     get_logger().info('Loading dataset...')
     dataset = tweet_disaster_dataset.TweetDisasterDataset(
-        'dataset_loader/spliited2/BPE_char_20230828145408_train_tr_6852.txt',
-        'dataset_loader/spliited2/20230828145408_train_label.txt_tr_6852.txt',
-        vocab, config.seq_len)
+        fine_tuning_config.train_dataset_file,
+        fine_tuning_config.train_dataset_label_file,
+        vocab, fine_tuning_config.seq_len)
     train_dataloader = DataLoader(
-        dataset, config.batch_size, config.shuffle_dataset_on_load,
-        collate_fn=tweet_disaster_dataset.create_collate_fn(config.seq_len, vocab['__PAD__']),)
+        dataset, fine_tuning_config.batch_size, fine_tuning_config.shuffle_dataset_on_load,
+        collate_fn=tweet_disaster_dataset.create_collate_fn(fine_tuning_config.seq_len, vocab['__PAD__']),)
 
     dataset = tweet_disaster_dataset.TweetDisasterDataset(
-        'dataset_loader/spliited2/BPE_char_20230828145408_train_va_761.txt',
-        'dataset_loader/spliited2/20230828145408_train_label.txt_va_761.txt',
-        vocab, config.seq_len)
+        fine_tuning_config.valid_dataset_file,
+        fine_tuning_config.valid_dataset_label_file,
+        vocab, fine_tuning_config.seq_len)
     valid_dataloader = DataLoader(
-        dataset, config.batch_size, config.shuffle_dataset_on_load,
-        collate_fn=tweet_disaster_dataset.create_collate_fn(config.seq_len, vocab['__PAD__']),)
+        dataset, fine_tuning_config.batch_size, fine_tuning_config.shuffle_dataset_on_load,
+        collate_fn=tweet_disaster_dataset.create_collate_fn(fine_tuning_config.seq_len, vocab['__PAD__']),)
 
     datasets = ''
     if train_dataloader:
@@ -179,7 +189,8 @@ def main(_config_file, pre_trained_model_file, _model_dir, _resume):
 
     model.train()
     try:
-        it = count(start_epoch+1) if config.epoch is None else range(start_epoch+1, config.epoch+1)
+        it = count(start_epoch+1) if fine_tuning_config.epoch is None else \
+            range(start_epoch+1, fine_tuning_config.epoch+1)
         for current_epoch in it:
             sw.add_scalar('epoch', current_epoch, step+1)
             for train_data in train_dataloader:
@@ -211,34 +222,34 @@ def main(_config_file, pre_trained_model_file, _model_dir, _resume):
                     train_interval_loss = .0
                     train_interval_acc = .0
 
-                # save checkpoint and validate.
-                if step > 1 and step % config.step_save_ckpt == 0:
-                    save_checkpoint(origin_model, os.path.join(_model_dir, 'checkpoint.pt'),
-                                    step, current_epoch, optim, scheduler)
-                    model_files = save_model(origin_model, _model_dir, model_files,
-                                             config.keep_last_models, step)
-                    get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
+            # save checkpoint and validate.
+            if step > 1:
+                save_checkpoint(origin_model, os.path.join(_model_dir, 'checkpoint.pt'),
+                                step, current_epoch, optim, scheduler)
+                model_files = save_model(origin_model, _model_dir, model_files,
+                                            fine_tuning_config.keep_last_models, step)
+                get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
 
-                    if valid_dataloader is not None:
-                        get_logger().info('%d/%d Start to validation', current_epoch, step)
-                        model.eval()
-                        valid_started = time.time()
-                        with torch.no_grad():
-                            val_loss, val_acc = run_epoch(
-                                valid_dataloader, model, loss_fn, None, False,
-                                sleep_between_step, device, True)
-                        model.train()
-                        elapsed_valid = time.time() - valid_started
-                        sw.add_scalar('elapsed/valid', elapsed_valid, step)
-                        sw.add_scalar('Loss/valid', val_loss, step)
-                        sw.add_scalar('Acc/valid', val_acc, step)
-                        get_logger().info(
-                            '%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
-                            current_epoch, step, round(val_loss, 4), round(val_acc, 4),
-                            round(elapsed_valid, 2))
+                if valid_dataloader is not None:
+                    get_logger().info('%d/%d Start to validation', current_epoch, step)
+                    model.eval()
+                    valid_started = time.time()
+                    with torch.no_grad():
+                        val_loss, val_acc = run_epoch(
+                            valid_dataloader, model, loss_fn, None, False,
+                            sleep_between_step, device, True)
+                    model.train()
+                    elapsed_valid = time.time() - valid_started
+                    sw.add_scalar('elapsed/valid', elapsed_valid, step)
+                    sw.add_scalar('Loss/valid', val_loss, step)
+                    sw.add_scalar('Acc/valid', val_acc, step)
+                    get_logger().info(
+                        '%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
+                        current_epoch, step, round(val_loss, 4), round(val_acc, 4),
+                        round(elapsed_valid, 2))
 
-                        if train_dataloader is None:
-                            break
+                    if train_dataloader is None:
+                        break
 
             sw.add_scalar('epoch', current_epoch, step)
             get_logger().info('%s/%s Training a epoch finished.', current_epoch, step)
@@ -261,19 +272,28 @@ def main(_config_file, pre_trained_model_file, _model_dir, _resume):
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('-c', '--config', type=str, default='configs/config_ln_encoder.yaml')
+    ap.add_argument('-c', '--pre_trained_config', type=str, default='configs/config_ln_encoder.yaml')
     ap.add_argument('-p', '--pre_trained_model', type=str, required=True)
+    ap.add_argument('-f', '--fine_tuning_config', type=str, default='config/config_fine_tuning.yaml')
     ap.add_argument('-d', '--model_dir', type=str, default='')
     ap.add_argument('-r', '--resume', default=False, action='store_true')
     args = ap.parse_args()
 
-    config_file = args.config
+    pre_trained_config = args.pre_trained_config
     pre_trained_model = args.pre_trained_model
+    fine_tuning_config = args.fine_tuning_config
     model_dir = args.model_dir
     resume = args.resume
 
-    if not os.path.exists(config_file):
-        get_logger().error('config file %s not exists.', config_file)
+    if not os.path.exists(pre_trained_config):
+        get_logger().error('pre trained config file %s not exists.', pre_trained_config)
         sys.exit()
 
-    main(config_file, pre_trained_model, model_dir, resume)
+    if not os.path.exists(pre_trained_model):
+        get_logger().error('pre trained model file %s not exists.', pre_trained_model)
+        sys.exit()
+    
+    if not os.path.exists(fine_tuning_config):
+        get_logger().error('fine tuning config file %s not exists.', fine_tuning_config)
+        sys.exit()
+    main(pre_trained_config, pre_trained_model, fine_tuning_config, model_dir, resume)

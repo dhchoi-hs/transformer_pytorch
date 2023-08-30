@@ -49,14 +49,14 @@ class TweetDisasterDataset(Dataset):
         if len(self.lines) != len(self.labels):
             raise IndexError('text and label length are different!')
 
-        max_len = max([max(map(len, d)) for d in self.lines])
+        max_len = max([len(d) for d in self.lines])
 
         if max_len > max_seq:
             get_logger().warning(
                 'dataset sequence length %d exceed config seq_len %d. '
                 'dataset sentence exceeding seq_len will be truncated.',
                 max_len, max_seq)
-            
+
     def __len__(self):
         return len(self.lines)
 
