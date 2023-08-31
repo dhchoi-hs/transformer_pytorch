@@ -7,6 +7,7 @@ compile_model: true
 keep_last_models: 10
 
 # hyperparameters
+freeze_mode: 1  # 1: freeze all of pretrained model 2: unfreeze last layer 3: unfreeze all
 batch_size: 128
 learning_rate: 1.0e-4
 lr_scheduler: null
