@@ -83,11 +83,12 @@ def main(_pre_trained_config, pre_trained_model_file, _fine_tuning_config, _mode
     txt += f'{separator}'
     get_logger().info(txt)
 
-    # TODO: use parallel gpu
     device = get_torch_device(fine_tuning_config.cuda_index)
     get_logger().info('Used device type: %s', device.type)
 
-    origin_model = TweetDisasterClassifierCNN.from_pretrained(pre_trained_model_file, pre_train_config)
+    origin_model = TweetDisasterClassifierCNN.from_pretrained(
+        pre_trained_model_file, pre_train_config, fine_tuning_config.freeze_mode,
+        dropout_p=fine_tuning_config.p_dropout)
 
     if fine_tuning_config.compile_model:
         model = torch.compile(origin_model)

@@ -1,0 +1,2 @@
+torch==2.0.1
+hs-aiteam-pkgs==1.0.2
