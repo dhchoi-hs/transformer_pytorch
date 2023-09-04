@@ -88,7 +88,7 @@ def main(_pre_trained_config, pre_trained_model_file, _fine_tuning_config, _mode
 
     origin_model = TweetDisasterClassifierCNN.from_pretrained(
         pre_trained_model_file, pre_train_config, fine_tuning_config.freeze_mode,
-        dropout_p=fine_tuning_config.p_dropout)
+        fine_tuning_config.conv_filters, dropout_p=fine_tuning_config.p_dropout)
 
     if fine_tuning_config.compile_model:
         model = torch.compile(origin_model)

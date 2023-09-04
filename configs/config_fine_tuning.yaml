@@ -14,9 +14,10 @@ lr_scheduler: null
 lr_scheduler_kwargs:
   gamma: 0.85
   warmup_epoch: 0
+conv_filters: 1
 weight_decay: 0
 p_dropout: 0.0
-seq_len: 256
+seq_len: 146
 
 # dataset
 shuffle_dataset_on_load: true

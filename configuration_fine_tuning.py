@@ -14,6 +14,7 @@ class FineTuningConfigData:
     learning_rate: float
     lr_scheduler: str
     lr_scheduler_kwargs: dict
+    conv_filters: int
     weight_decay: float
     p_dropout: float
     seq_len: int
