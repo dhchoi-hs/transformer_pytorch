@@ -117,10 +117,11 @@ class TweetDisasterClassifierCNN(TweetDisasterClassifierBase):
         for input_sentence, sentence in zip(x, _x):
             sentence_without_padding = sentence[input_sentence != self.pretrained_model.padding_idx]
             sentence_without_padding = self.dropout(sentence_without_padding.transpose(-1, -2))
-            conved_list = [cnn(sentence_without_padding) for cnn in self.cnns]
+            conved_list = [cnn(sentence_without_padding)
+                           for cnn in self.cnns]
             outputs.append(torch.cat(
-                [F.max_pool1d(conved, conved.size(-1)).transpose(-1, -2).squeeze(-2)
-                 for conved in conved_list]))
+                [activation_functions.relu(F.max_pool1d(conved, conved.size(-1))).
+                 transpose(-1, -2).squeeze(-2) for conved in conved_list]))
 
         return self.fc(torch.stack(outputs)).sigmoid().squeeze(-1)
 
@@ -133,14 +134,14 @@ if __name__ == '__main__':
         'v5k_bat128_d1024_h8_lyr6_ff2048_lr2e-4dcosinelr/config_ln_encoder.yaml'
     _config = load_config_file(CONFIG_FILE)
 
-    model = TweetDisasterClassifierCNN.from_pretrained(MODEL_FILE, _config, 2)
+    model = TweetDisasterClassifierCNN.from_pretrained(MODEL_FILE, _config, 1, 3)
     model.train()
     num_params = 0
     for name, params in model.named_parameters():
         if params.requires_grad is True:
             num_params += params.numel()
     print(num_params)
-    inp = torch.randint(2500, 5000,[2, _config.seq_len])
+    inp = torch.randint(2500, 5000, [2, _config.seq_len])
     inp[..., -20:] = model.pretrained_model.padding_idx
     logits = model(inp)
     print(logits)
