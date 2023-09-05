@@ -1,7 +1,7 @@
 # general
 cuda_index: 0
 epoch: null
-compile_model: true
+compile_model: false
 
 # saving model files
 keep_last_models: 10
@@ -14,14 +14,15 @@ lr_scheduler: null
 lr_scheduler_kwargs:
   gamma: 0.85
   warmup_epoch: 0
-conv_filters: 1
+conv_filters: 100
+kernel_sizes: [3, 4, 5]
 weight_decay: 0
 p_dropout: 0.0
 seq_len: 146
 
 # dataset
 shuffle_dataset_on_load: true
-train_dataset_file: 
-train_dataset_label_file: 
-valid_dataset_file: 
-valid_dataset_label_file: 
+train_dataset_file: /data/corpus/tweet_disaster/parsed/train_6852.txt
+train_dataset_label_file: /data/corpus/tweet_disaster/parsed/train_6852_label.txt
+valid_dataset_file: /data/corpus/tweet_disaster/parsed/val_761.txt
+valid_dataset_label_file: /data/corpus/tweet_disaster/parsed/val_761_label.txt

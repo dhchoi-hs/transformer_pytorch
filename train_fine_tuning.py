@@ -88,7 +88,8 @@ def main(_pre_trained_config, pre_trained_model_file, _fine_tuning_config, _mode
 
     origin_model = TweetDisasterClassifierCNN.from_pretrained(
         pre_trained_model_file, pre_train_config, fine_tuning_config.freeze_mode,
-        fine_tuning_config.conv_filters, dropout_p=fine_tuning_config.p_dropout)
+        fine_tuning_config.conv_filters, kernel_sizes=fine_tuning_config.kernel_sizes,
+        dropout_p=fine_tuning_config.p_dropout)
 
     if fine_tuning_config.compile_model:
         model = torch.compile(origin_model)
@@ -293,7 +294,7 @@ if __name__ == '__main__':
     if not os.path.exists(pre_trained_model):
         get_logger().error('pre trained model file %s not exists.', pre_trained_model)
         sys.exit()
-    
+
     if not os.path.exists(fine_tuning_config):
         get_logger().error('fine tuning config file %s not exists.', fine_tuning_config)
         sys.exit()

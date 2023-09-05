@@ -64,20 +64,21 @@ class TweetDisasterClassifierMLP(TweetDisasterClassifierBase):
 
 class TweetDisasterClassifierCNN(TweetDisasterClassifierBase):
     def __init__(self, pretrained_model: lm_encoder, freeze_mode=1,
-                 conv_filters=1, dropout_p=0.1) -> None:
+                 conv_filters=100, kernel_sizes=[3, 4, 5], dropout_p=0.1) -> None:
         super().__init__(pretrained_model)
 
         self.cnns = nn.ModuleList([nn.Conv1d(
             self.pretrained_model.emb.d_model, conv_filters, kernel_size)
-            for kernel_size in range(2, 6)])
+            for kernel_size in kernel_sizes])
         self.fc = Linear(len(self.cnns)*conv_filters, 1)
         self.dropout = Dropout.Dropout(dropout_p)
         self.freeze_mode = freeze_mode
 
     @classmethod
-    def from_pretrained(cls, model_file, _config, freeze_mode=1, conv_filters=1, dropout_p=0.1):
+    def from_pretrained(cls, model_file, _config, freeze_mode=1, conv_filters=1,
+                        kernel_sizes=[3, 4, 5], dropout_p=0.1):
         pretrained_model = cls._load_from_pretrain(model_file, _config)
-        return cls(pretrained_model, freeze_mode, conv_filters, dropout_p)
+        return cls(pretrained_model, freeze_mode, conv_filters, kernel_sizes, dropout_p)
 
     def train(self, mode: bool = True):
         super(TweetDisasterClassifierBase, self).train(mode)
@@ -116,14 +117,14 @@ class TweetDisasterClassifierCNN(TweetDisasterClassifierBase):
         outputs = []
         for input_sentence, sentence in zip(x, _x):
             sentence_without_padding = sentence[input_sentence != self.pretrained_model.padding_idx]
-            sentence_without_padding = self.dropout(sentence_without_padding.transpose(-1, -2))
+            sentence_without_padding = sentence_without_padding.transpose(-1, -2)
             conved_list = [cnn(sentence_without_padding)
                            for cnn in self.cnns]
             outputs.append(torch.cat(
                 [activation_functions.relu(F.max_pool1d(conved, conved.size(-1))).
                  transpose(-1, -2).squeeze(-2) for conved in conved_list]))
 
-        return self.fc(torch.stack(outputs)).sigmoid().squeeze(-1)
+        return self.fc(self.dropout(torch.stack(outputs))).sigmoid().squeeze(-1)
 
 
 if __name__ == '__main__':
@@ -134,7 +135,10 @@ if __name__ == '__main__':
         'v5k_bat128_d1024_h8_lyr6_ff2048_lr2e-4dcosinelr/config_ln_encoder.yaml'
     _config = load_config_file(CONFIG_FILE)
 
-    model = TweetDisasterClassifierCNN.from_pretrained(MODEL_FILE, _config, 1, 3)
+    model = TweetDisasterClassifierCNN.from_pretrained(
+        MODEL_FILE, _config, 1, 100, [3, 4, 5])
+    origin_model = model
+    model = torch.compile(model)
     model.train()
     num_params = 0
     for name, params in model.named_parameters():

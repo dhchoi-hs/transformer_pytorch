@@ -15,6 +15,7 @@ class FineTuningConfigData:
     lr_scheduler: str
     lr_scheduler_kwargs: dict
     conv_filters: int
+    kernel_sizes: list[int]
     weight_decay: float
     p_dropout: float
     seq_len: int

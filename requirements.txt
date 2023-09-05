@@ -1,2 +1,4 @@
 torch==2.0.1
 hs-aiteam-pkgs==1.0.2
+ray[tune]==2.6.3
+ray[serve]==2.6.3
