@@ -18,10 +18,10 @@ def run_step(a_data, model, criterion, optim=None, train_mode=True, device=None)
     pad_mask = (x != model.padding_idx).unsqueeze(-2).unsqueeze(-2)
     output = model(x, pad_mask)
 
-    y_masked = y.nonzero(as_tuple=True)
-    output_only_masked = output[y_masked]
-    
-    y_only_masked = y[y_masked]
+    y_predict_token_pos = y != -1
+    y_only_masked = y[y_predict_token_pos]
+
+    output_only_masked = output[y_predict_token_pos]
     output_only_masked = torch.matmul(output_only_masked, model.emb.table.T)
     # output_only_masked = torch.matmul(output_only_masked, model.emb.weight.T)
     # output_only_masked = model.l(output_only_masked)
@@ -30,7 +30,8 @@ def run_step(a_data, model, criterion, optim=None, train_mode=True, device=None)
 
     if train_mode:
         loss.backward()
-        model.emb.table.grad[model.emb.padding_idx] = torch.zeros_like(model.emb.table.grad[model.emb.padding_idx])
+        model.emb.table.grad[model.emb.padding_idx] = \
+            torch.zeros_like(model.emb.table.grad[model.emb.padding_idx])
         optim.step()
 
     loss_item = loss.item()
@@ -72,7 +73,15 @@ def run_step_fine_tuning(a_data, model, criterion, optim=None, train_mode=True, 
     return loss_item, acc
 
 
-def run_epoch(dataset, model, criterion, optim=None, train_mode=True, sleep=None, device=None, fine_tuning=False):
+def run_epoch(
+        dataset,
+        model,
+        criterion,
+        optim=None,
+        train_mode=True,
+        sleep=None,
+        device=None,
+        fine_tuning=False):
     if train_mode:
         assert optim, 'optimizer must be set in training mode.'
     running_loss = 0.

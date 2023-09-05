@@ -97,7 +97,8 @@ class MLMdatasetDynamic(Dataset):
             masked_seq[random_replace_token_indices] = torch.LongTensor(
                 random.sample(range(self.random_replaced_token_start_idx,
                     len(self.vocab)), len(random_replace_token_indices)))
-        label = torch.zeros(seq.shape).type(torch.long)
+        # label = torch.zeros(seq.shape).type(torch.long)
+        label = torch.full_like(seq, -1).type(torch.long)
         label[mask_indices] = seq[mask_indices]
 
         return masked_seq, label
