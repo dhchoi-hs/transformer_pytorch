@@ -73,6 +73,7 @@ class TweetDisasterClassifierCNN(TweetDisasterClassifierBase):
         self.fc = Linear(len(self.cnns)*conv_filters, 1)
         self.dropout = Dropout.Dropout(dropout_p)
         self.freeze_mode = freeze_mode
+        self.max_kernel_size = max(kernel_sizes)
 
     @classmethod
     def from_pretrained(cls, model_file, _config, freeze_mode=1, conv_filters=1,
@@ -117,6 +118,10 @@ class TweetDisasterClassifierCNN(TweetDisasterClassifierBase):
         outputs = []
         for input_sentence, sentence in zip(x, _x):
             sentence_without_padding = sentence[input_sentence != self.pretrained_model.padding_idx]
+            if sentence_without_padding.size(0) < self.max_kernel_size:
+                sentence_without_padding = F.pad(
+                    sentence_without_padding,
+                    (0, 0, 0, self.max_kernel_size - sentence_without_padding.size(0)))
             sentence_without_padding = sentence_without_padding.transpose(-1, -2)
             conved_list = [cnn(sentence_without_padding)
                            for cnn in self.cnns]
@@ -145,8 +150,8 @@ if __name__ == '__main__':
         if params.requires_grad is True:
             num_params += params.numel()
     print(num_params)
-    inp = torch.randint(2500, 5000, [2, _config.seq_len])
-    inp[..., -20:] = model.pretrained_model.padding_idx
+    inp = torch.randint(2500, 5000, [128, 146])
+    inp[..., -100:] = model.pretrained_model.padding_idx
     logits = model(inp)
     print(logits)
     a = logits.mean().backward()
