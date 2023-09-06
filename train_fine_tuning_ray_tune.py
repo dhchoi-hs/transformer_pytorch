@@ -130,6 +130,7 @@ def train_n_val(config, dataset, vocab, pre_train_config, pre_trained_model, tra
     logging_interval = 20
     elapsed_train = 0
 
+    epoch_train_loss = epoch_train_acc = .0
     it = range(1, _config.epoch+1) if _config.epoch is not None else count(1)
     step = 0
     iters = len(train_dataloader)
@@ -147,6 +148,8 @@ def train_n_val(config, dataset, vocab, pre_train_config, pre_trained_model, tra
                 elapsed_train += time.time() - training_started
                 train_interval_loss += train_loss
                 train_interval_acc += train_acc
+                epoch_train_loss += train_loss
+                epoch_train_acc += train_acc
 
                 # change lr.
                 if scheduler:
@@ -166,11 +169,6 @@ def train_n_val(config, dataset, vocab, pre_train_config, pre_trained_model, tra
                     summary_writer.add_scalar('Loss/train', iterval_loss, step)
                     summary_writer.add_scalar('Acc/train', interval_acc, step)
                     summary_writer.add_scalar('learning_rate', optim.param_groups[0]["lr"], step)
-                    results = {
-                        'loss': iterval_loss,
-                        'acc': interval_acc
-                    }
-                    session.report(results)
                     elapsed_train = 0
                     train_interval_loss = .0
                     train_interval_acc = .0
@@ -201,6 +199,8 @@ def train_n_val(config, dataset, vocab, pre_train_config, pre_trained_model, tra
                         current_epoch, step, round(val_loss, 4),
                         round(val_acc, 4), round(elapsed_valid, 2))
                     results = {
+                        'train_loss': epoch_train_loss/len(train_dataloader),
+                        'train_acc': epoch_train_acc/len(train_dataloader),
                         'val_loss': val_loss,
                         'val_acc': val_acc
                     }
@@ -208,6 +208,8 @@ def train_n_val(config, dataset, vocab, pre_train_config, pre_trained_model, tra
 
                     if train_dataloader is None:
                         break
+            epoch_train_loss = .0
+            epoch_train_acc = .0
 
             summary_writer.add_scalar('epoch', current_epoch, step)
             get_logger().info('%s/%s Training a epoch finished.', current_epoch, step)
@@ -268,7 +270,7 @@ def main(pre_trained_config_file, pre_trained_model_file, fine_tuning_config_fil
         'conv_filters': tune.grid_search([100, 200, 300]),
         'kernel_sizes': tune.grid_search([[3, 4, 5], [4, 5, 6, 7]]),
         'weight_decay': 0,
-        'p_dropout': 0,
+        'p_dropout': tune.grid_search([0.2, 0.5]),
     }
     # scheduler = ASHAScheduler()
     # algo = HyperOptSearch(metric='acc', mode='max')
@@ -301,7 +303,7 @@ def main(pre_trained_config_file, pre_trained_model_file, fine_tuning_config_fil
 
     print(f"Best trial config: {best_result.config}")
     # print(f"Best trial final validation loss: {best_result.metrics['loss']}")
-    print(f"Best trial final train accuracy: {best_result.metrics['acc']}")
+    print(f"Best trial final train accuracy: {best_result.metrics['train_acc']}")
     print(f"Best trial final validation accuracy: {best_result.metrics['val_acc']}")
 
 
