@@ -120,7 +120,7 @@ def main(_config_file, _model_dir, _resume, memo):
     
     if _resume:
         checkpoint = load_ckpt(os.path.join(_model_dir, 'checkpoint.pt'))
-        model.load_state_dict(checkpoint['model_state_dict'])
+        origin_model.load_state_dict(checkpoint['model_state_dict'])
         optim.load_state_dict(checkpoint['optimizer_state_dict'])
 
         def get_epoch_of_model_file(x):

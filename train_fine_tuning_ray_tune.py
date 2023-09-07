@@ -229,7 +229,12 @@ def train_n_val(config, dataset, vocab, pre_train_config, pre_trained_model, tra
     #                     current_epoch, optim, scheduler)
 
 
-def main(pre_trained_config_file, pre_trained_model_file, fine_tuning_config_file, _model_dir):
+def main(
+        pre_trained_config_file,
+        pre_trained_model_file,
+        fine_tuning_config_file,
+        _model_dir,
+        _restore_dir):
     try:
         pre_trained_config = configuration.load_config_file(pre_trained_config_file)
         configuration.validate_config(pre_trained_config)
@@ -272,11 +277,7 @@ def main(pre_trained_config_file, pre_trained_model_file, fine_tuning_config_fil
         'weight_decay': 0,
         'p_dropout': tune.grid_search([0.2, 0.5]),
     }
-    # scheduler = ASHAScheduler()
-    # algo = HyperOptSearch(metric='acc', mode='max')
-    stopper = TrialPlateauStopper('val_acc', std=0.005, num_results=5, grace_period=5)
-    tuner = tune.Tuner(
-        tune.with_resources(
+    train_func = tune.with_resources(
             tune.with_parameters(train_n_val,
                                  dataset=dataset_dict,
                                  vocab=vocab,
@@ -284,19 +285,30 @@ def main(pre_trained_config_file, pre_trained_model_file, fine_tuning_config_fil
                                  pre_trained_model=pre_trained_model_file,
                                  train_config=fine_tuning_config),
             resources={'gpu': 1}
-        ),
-        tune_config=tune.TuneConfig(
-            metric="val_acc",
-            mode="max",
-            # scheduler=scheduler,
-            # search_alg=algo,
-            num_samples=1,
-            max_concurrent_trials=1
-        ),
-        run_config=RunConfig(storage_path=_model_dir if _model_dir else None,
-                             stop=stopper),
-        param_space=config,
-    )
+        )
+    if _restore_dir:
+        if not tune.Tuner.can_restore(_restore_dir):
+            get_logger().error('can\'t restore. %s', _restore_dir)
+            sys.exit(1)
+        tuner = tune.Tuner.restore(_restore_dir, trainable=train_func)
+    else:
+        # scheduler = ASHAScheduler()
+        # algo = HyperOptSearch(metric='acc', mode='max')
+        # stopper = TrialPlateauStopper('val_acc', std=0.005, num_results=5, grace_period=5)
+        tuner = tune.Tuner(
+            train_func,
+            tune_config=tune.TuneConfig(
+                metric="val_acc",
+                mode="max",
+                # scheduler=scheduler,
+                # search_alg=algo,
+                num_samples=1,
+                max_concurrent_trials=1
+            ),
+            run_config=RunConfig(storage_path=_model_dir if _model_dir else None),
+                                #  stop=stopper),
+            param_space=config,
+        )
     results = tuner.fit()
 
     best_result = results.get_best_result("val_acc", "max")
@@ -315,12 +327,14 @@ if __name__ == '__main__':
     ap.add_argument('-f', '--fine_tuning_config', type=str,
                     default='config/config_fine_tuning.yaml')
     ap.add_argument('-d', '--model_dir', type=str, default='')
+    ap.add_argument('-r', '--restore_dir', type=str, default='')
     args = ap.parse_args()
 
     _pre_trained_config = args.pre_trained_config
     _pre_trained_model = args.pre_trained_model
     _fine_tuning_config = args.fine_tuning_config
     _model_dir = args.model_dir
+    _restore_dir = args.restore_dir
 
     if not os.path.exists(_pre_trained_config):
         get_logger().error('config file %s not exists.', _pre_trained_config)
@@ -335,4 +349,5 @@ if __name__ == '__main__':
         _pre_trained_config,
         _pre_trained_model,
         _fine_tuning_config,
-        _model_dir)
+        _model_dir,
+        _restore_dir)
