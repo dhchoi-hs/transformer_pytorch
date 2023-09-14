@@ -11,28 +11,25 @@ def round_int(n):
     return int(n+0.5)
 
 
-def create_collate_fn(max_seq, padding_idx):
-    def collate_fn(samples):
-        collated_x = []
-        collated_y = []
-        # max_len = min(max(map(lambda x: len(x[0]), samples)), max_seq)
-        # max_len = max([len(d[0]) for d in samples])
-        # length = min(max_len, max_seq)
-        for x, y in samples:
-            if len(x) == max_seq:
-                pass
-            elif len(x) > max_seq:
-                x = x[:max_seq]
-                y = y[:max_seq]
-            else:
-                x = torch.cat([x, torch.LongTensor([padding_idx]*(max_seq-len(x)))])
-                y = torch.cat([y, torch.LongTensor([-1]*(max_seq-len(y)))])
-            collated_x.append(x)
-            collated_y.append(y)
+def collate_fn(samples, max_seq, padding_idx):
+    collated_x = []
+    collated_y = []
+    # max_len = min(max(map(lambda x: len(x[0]), samples)), max_seq)
+    # max_len = max([len(d[0]) for d in samples])
+    # length = min(max_len, max_seq)
+    for x, y in samples:
+        if len(x) == max_seq:
+            pass
+        elif len(x) > max_seq:
+            x = x[:max_seq]
+            y = y[:max_seq]
+        else:
+            x = torch.cat([x, torch.LongTensor([padding_idx]*(max_seq-len(x)))])
+            y = torch.cat([y, torch.LongTensor([-1]*(max_seq-len(y)))])
+        collated_x.append(x)
+        collated_y.append(y)
 
-        return torch.stack(collated_x), torch.stack(collated_y)
-
-    return collate_fn
+    return torch.stack(collated_x), torch.stack(collated_y)
 
 
 def worker_init(worker_id):

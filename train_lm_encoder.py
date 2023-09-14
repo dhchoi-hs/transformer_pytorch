@@ -6,6 +6,7 @@ import argparse
 import shutil
 import json
 import time
+from functools import partial
 from itertools import count
 from datetime import datetime
 import torch
@@ -108,7 +109,7 @@ def main(_config_file, _model_dir, _resume, memo):
         f"{separator}\n"
         f"Number of parameters: {num_params:,}\n"
         f"{separator}")
-    
+
     get_logger().info(txt)
 
     loss_fn = torch.nn.CrossEntropyLoss()
@@ -153,12 +154,13 @@ def main(_config_file, _model_dir, _resume, memo):
         del dummy_tensor
 
     get_logger().info('Loading dataset...')
+    collate_fn = partial(mlm_dataset.collate_fn, max_seq=config.seq_len, padding_idx=vocab['__PAD__'])
     dataset = mlm_dataset.MLMdatasetDynamic(
         config.train_dataset_files, vocab, config.vocab_start_token_id,
         config.seq_len, config.shuffle_dataset_on_load, config.train_sampling_ratio)
     train_dataloader = DataLoader(
         dataset, config.batch_size, config.shuffle_dataset_on_load, num_workers=2,
-        collate_fn=mlm_dataset.create_collate_fn(config.seq_len, vocab['__PAD__']),
+        collate_fn=collate_fn,
         worker_init_fn=mlm_dataset.worker_init)
 
     dataset = mlm_dataset.MLMDatasetFixed(
@@ -166,7 +168,7 @@ def main(_config_file, _model_dir, _resume, memo):
         config.seq_len, config.shuffle_dataset_on_load, config.valid_sampling_ratio)
     valid_dataloader = DataLoader(
         dataset, config.batch_size, config.shuffle_dataset_on_load, num_workers=2,
-        collate_fn=mlm_dataset.create_collate_fn(config.seq_len, vocab['__PAD__']),
+        collate_fn=collate_fn,
         worker_init_fn=mlm_dataset.worker_init)
 
     datasets = ''
@@ -187,18 +189,14 @@ def main(_config_file, _model_dir, _resume, memo):
     logging_interval = 20
     elapsed_train = 0
 
-    last_lr = optim.param_groups[0]["lr"]
-    last_written_lr = None
-
     try:
         if step == 0:
-            sw.add_scalar('learning_rate', last_lr, step+1)
+            sw.add_scalar('learning_rate', optim.param_groups[0]["lr"], step+1)
         it = count(start_epoch+1) if config.epoch is None else range(start_epoch+1, config.epoch+1)
         for current_epoch in it:
             sw.add_scalar('epoch', current_epoch, step+1)
             for train_data in train_dataloader:
                 step += 1
-                last_lr = optim.param_groups[0]["lr"]
                 model.train()
                 training_started = time.time()
                 train_loss, train_acc = run_step(train_data, model, loss_fn, optim, True, device)
@@ -221,9 +219,7 @@ def main(_config_file, _model_dir, _resume, memo):
                     sw.add_scalar('elapsed/train', elapsed_train, step)
                     sw.add_scalar('Loss/train', iterval_loss, step)
                     sw.add_scalar('Acc/train', interval_acc, step)
-                    if last_written_lr != last_lr:
-                        sw.add_scalar('learning_rate', last_lr, step)
-                        last_written_lr = last_lr
+                    sw.add_scalar('learning_rate', optim.param_groups[0]["lr"], step)
                     elapsed_train = 0
                     train_interval_loss = .0
                     train_interval_acc = .0

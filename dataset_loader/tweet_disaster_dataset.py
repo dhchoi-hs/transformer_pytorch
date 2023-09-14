@@ -6,23 +6,20 @@ from hs_aiteam_pkgs.util.logger import get_logger
 random.seed(7)
 
 
-def create_collate_fn(max_seq, padding_idx):
-    def collate_fn(samples):
-        collated_x = []
-        collated_y = []
-        for x, y in samples:
-            if len(x) == max_seq:
-                pass
-            elif len(x) > max_seq:
-                x = x[:max_seq]
-            else:
-                x = [*x, *[padding_idx]*(max_seq-len(x))]
-            collated_x.append(x)
-            collated_y.append(y)
+def collate_fn(samples, max_seq, padding_idx):
+    collated_x = []
+    collated_y = []
+    for x, y in samples:
+        if len(x) == max_seq:
+            pass
+        elif len(x) > max_seq:
+            x = x[:max_seq]
+        else:
+            x = [*x, *[padding_idx]*(max_seq-len(x))]
+        collated_x.append(x)
+        collated_y.append(y)
 
-        return torch.LongTensor(collated_x), torch.Tensor(collated_y)
-
-    return collate_fn
+    return torch.LongTensor(collated_x), torch.Tensor(collated_y)
 
 
 def worker_init(worker_id):

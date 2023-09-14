@@ -4,6 +4,7 @@ import argparse
 import json
 import time
 from copy import deepcopy
+from functools import partial
 from itertools import count
 import yaml
 import torch
@@ -38,7 +39,7 @@ def train_n_val(config, train_dataset, valid_dataset, vocab, train_config, epoch
     h = config['h']
     d_model = config['d_model']
 
-    collate_fn = mlm_dataset.create_collate_fn(train_config.seq_len, vocab['__PAD__'])
+    collate_fn = partial(mlm_dataset.collate_fn, max_seq=config.seq_len, padding_idx=vocab['__PAD__'])
 
     train_dataloader = DataLoader(
         train_dataset, batch_size, train_config.shuffle_dataset_on_load,

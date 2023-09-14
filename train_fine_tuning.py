@@ -6,6 +6,7 @@ import argparse
 import shutil
 import json
 import time
+from functools import partial
 from itertools import count
 from datetime import datetime
 import torch
@@ -155,13 +156,15 @@ def main(_pre_trained_config, pre_trained_model_file, _fine_tuning_config, _mode
         del dummy_tensor
 
     get_logger().info('Loading dataset...')
+    collate_fn = partial(tweet_disaster_dataset.collate_fn,
+                         max_seq=fine_tuning_config.seq_len, padding_idx=vocab['__PAD__'])
     dataset = tweet_disaster_dataset.TweetDisasterDataset(
         fine_tuning_config.train_dataset_file,
         fine_tuning_config.train_dataset_label_file,
         vocab, fine_tuning_config.seq_len)
     train_dataloader = DataLoader(
         dataset, fine_tuning_config.batch_size, fine_tuning_config.shuffle_dataset_on_load,
-        collate_fn=tweet_disaster_dataset.create_collate_fn(fine_tuning_config.seq_len, vocab['__PAD__']),)
+        collate_fn=collate_fn,)
 
     dataset = tweet_disaster_dataset.TweetDisasterDataset(
         fine_tuning_config.valid_dataset_file,
@@ -169,7 +172,7 @@ def main(_pre_trained_config, pre_trained_model_file, _fine_tuning_config, _mode
         vocab, fine_tuning_config.seq_len)
     valid_dataloader = DataLoader(
         dataset, fine_tuning_config.batch_size, fine_tuning_config.shuffle_dataset_on_load,
-        collate_fn=tweet_disaster_dataset.create_collate_fn(fine_tuning_config.seq_len, vocab['__PAD__']),)
+        collate_fn=collate_fn,)
 
     datasets = ''
     if train_dataloader:
