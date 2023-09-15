@@ -3,6 +3,7 @@ import os
 import argparse
 import json
 import time
+from functools import partial
 from copy import deepcopy
 from itertools import count
 import yaml
@@ -38,8 +39,8 @@ def train_n_val(config, dataset, vocab, pre_train_config, pre_trained_model, tra
     p_dropout = config['p_dropout']
     kernel_sizes = config['kernel_sizes']
 
-    collate_fn = tweet_disaster_dataset.create_collate_fn(train_config.seq_len, vocab['__PAD__'])
-
+    collate_fn = partial(tweet_disaster_dataset.collate_fn,
+                         max_seq=train_config.seq_len, padding_idx=vocab['__PAD__'])
     train_dataloader = DataLoader(
         dataset['train'], train_config.batch_size, train_config.shuffle_dataset_on_load,
         num_workers=0, collate_fn=collate_fn,)
@@ -73,7 +74,7 @@ def train_n_val(config, dataset, vocab, pre_train_config, pre_trained_model, tra
     separator = '='*80
     txt = 'configuration information\n'
     txt += f'{separator}\n'
-    for k, v in configuration.convert_to_dict(_config).items():
+    for k, v in configuration.convert_to_dict(pre_train_config).items():
         txt += f'{k:<22}: {v}\n'
     txt += f'{separator}\n'
     for k, v in configuration_fine_tuning.convert_to_dict(_config).items():

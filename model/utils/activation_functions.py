@@ -1,18 +1,37 @@
 import math
 from typing import Callable
 import torch
+from torch import nn
 
 
-def relu(x):
-    return x.masked_fill(x < 0, 0)
+
+# MAX_EXPONENT_VAL = torch.trunc(torch.log(torch.nan_to_num(torch.tensor(float('inf'))))*10000)/10000
 
 
-def gelu(x):
-    return 0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi)*(x + 0.044715 * x ** 3)))
+# def relu(x):
+#     return x.masked_fill(x < 0, 0)
 
 
-def silu(x):
-    return x * 1 / (1 + torch.exp(-x))
+# def gelu(x):
+#     return 0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi)*(x + 0.044715 * x ** 3)))
+
+
+# def silu(x):
+#     # prevent torch.exp(-x) getting infinity value.
+#     x = torch.where(x > -MAX_EXPONENT_VAL, x, -MAX_EXPONENT_VAL)
+#     return x * 1 / (1 + torch.exp(-x))
+
+
+def relu():
+    return nn.ReLU()
+
+
+def gelu():
+    return nn.GELU()
+
+
+def silu():
+    return nn.SiLU()
 
 
 swish: Callable = silu

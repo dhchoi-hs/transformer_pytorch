@@ -9,7 +9,7 @@ class FeedForward(nn.Module):
         super().__init__()
         self.w1 = Linear(d_model, d_ff)
         self.w2 = Linear(d_ff, d_model)
-        self.activation = getattr(activation_functions, activation)
+        self.activation = getattr(activation_functions, activation)()
         self.dropout = Dropout(dropout_p)
 
     def forward(self, x):

@@ -26,6 +26,7 @@ from training_iter import run_step, run_epoch
 torch.manual_seed(7)
 torch.cuda.manual_seed_all(7)
 catch_kill_signal()
+# torch.autograd.set_detect_anomaly(True)
 
 
 def main(_config_file, _model_dir, _resume, memo):
@@ -63,7 +64,7 @@ def main(_config_file, _model_dir, _resume, memo):
             os.makedirs(_model_dir, exist_ok=True)
             shutil.copy(_config_file, _model_dir)
 
-    init_logger(os.path.join(_model_dir, 'log.log'))
+    init_logger(os.path.join(_model_dir, 'log.log' if not _resume else 'log_resume.log'))
     get_logger().info('Training started.')
     separator = '='*80
     txt = 'configuration information\n'
