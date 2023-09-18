@@ -88,7 +88,7 @@ def main(_pre_trained_config, pre_trained_model_file, _fine_tuning_config, _mode
     get_logger().info('Used device type: %s', device.type)
 
     origin_model = TweetDisasterClassifierCNN.from_pretrained(
-        pre_trained_model_file, pre_train_config, fine_tuning_config.freeze_mode,
+        pre_trained_model_file, pre_train_config, fine_tuning_config.unfreeze_last_layers,
         fine_tuning_config.conv_filters, kernel_sizes=fine_tuning_config.kernel_sizes,
         dropout_p=fine_tuning_config.p_dropout)
 

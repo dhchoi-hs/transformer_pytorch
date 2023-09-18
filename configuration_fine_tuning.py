@@ -9,7 +9,7 @@ class FineTuningConfigData:
     cuda_index: Union[int, None]
     compile_model: bool
     epoch: int
-    freeze_mode: int
+    unfreeze_last_layers: int
     batch_size: int
     learning_rate: float
     lr_scheduler: str
