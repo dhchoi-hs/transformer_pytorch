@@ -57,7 +57,7 @@
   - 입력 token 중 15% token을 예측. 15%의 token을 아래 비율대로 처리한다.
     - 80%: [MASK] token으로 변경
     - 10%: 임의의 token으로 변경
-    - 10%: 변경하지 않고 그대로 둠
+    - 10%: 변경하지 않고 그대로 둔다. 정답을 예측하는 이유는 정답에 대해 bias를 주기 위함이다.
   - static masking -> dynamic masking (RoBERTa)  
   <img src="./images/masking.png" width="500"/>
     - RoBERTa의 경우 고정된 mask token이 아닌 10가지 masking을 각각 4번 반복하여 학습한다.(40 epochs)
