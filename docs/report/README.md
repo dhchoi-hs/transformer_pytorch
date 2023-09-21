@@ -26,9 +26,9 @@
 ### dataset
   * AI Hub - 한국어-영어 번역(병렬) 말뭉치
     - AI 번역 엔진 개발을 위한 총 160만문장의 학습용 문장을 구축한 자연어 데이터를 제공한다.  
-    <img src="./images/AIHub_KoEn_1.png" width="850"/>
+  <img src="./images/AIHub_KoEn_1.png" width="850"/>
     - 데이터 예시  
-    <img src="./images/AIHub_KoEn_3.png" width="800"/>
+  <img src="./images/AIHub_KoEn_3.png" width="800"/>
 
   * kaggle - tweet disaster dataset
     - 일반 트윗 메시지와 재난 관련 트윗 메시지가 혼합되어 트윗 메시지가 재난/재해와 연관이 있는지 구분하는 데이터셋이다.
