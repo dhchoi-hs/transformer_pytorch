@@ -1,11 +1,11 @@
-# Lanaguage Model(LM) Using transformer encoder/decoder
+# Lanaguage Model(LM) Using transformer encoder
 
-## Introduction
+## Introduction / 서론
 - Transformer의 Encoder stack을 사용한 BERT 모델 학습 연구 보고서
 
-## Preliminaries
+## Preliminaries / 선행 연구
 - Transformer
-
+  - 2017년 구글에서 발표한 논문 "Attention is all you need"에서 소개된 모델로 인코더-디코더 구조를 가지고있다. 기존의 NLP 모델의 한계를 뛰어넘은 모델로 현재도 많은 모델이 Transformer의 인코더, 디코더를 기반으로 만들어지고있다.  
   <img src="./images/transformer.png" width="350"/>
 
   * Input Embedding
@@ -22,7 +22,7 @@
     * add & layernorm
     * residual connection
 
-## Methods
+## Methods / 연구 방법
 ### dataset
   * AI Hub - 한국어-영어 번역(병렬) 말뭉치
     - AI 번역 엔진 개발을 위한 총 160만문장의 학습용 문장을 구축한 자연어 데이터를 제공한다.  
@@ -38,7 +38,7 @@
 
   * Pile
     - 언어 모델 학습을 위한 800GB 이상의 대규모 학습 데이터세트로 구성된 영어 오픈 소스 데이터 세트이다.
-    - github, ArXiv, wikipedia, youtube 자막 등 총 22개의 하위 데이터세트로 구성되어있다.  
+    - github, ArXiv, wikipedia, youtube 자막, 웹텍스트 등 총 22개의 하위 데이터세트로 구성되어있다.  
   <img src="./images/pile_overview.png" width="550"/>
 
 ### tokenization
@@ -50,7 +50,7 @@
       <img src="./images/bpe_fig2.png" width="150"/>
     
 ### models
-  #### pre training - BERT
+  #### pre training - BERT masked language model
   
   <img src="./images/bert_mlm.png" width="500"/>
 
@@ -64,7 +64,7 @@
       - BERT의 static masking보다 뛰어난 성능을 보인다.
     - RoBERTa의 방식에서 더 나아가 매 epoch마다 random하게 새로 masking하는 방식을 사용한다.
   - 연속된 문장이 없는 데이터셋 특성을 고려하여 [CLS], [SEP] 토큰 제거하고 단일 문장을 학습에 사용했다.
-  - token output에서 linear regression을 사용하지 않고 embedding을 사용한다.
+  - BERT output token에서 linear transform을 사용하지 않고 embedding을 사용한다.
     - linear를 사용하지 않으므로 학습에 필요한 parameter수가 줄어들고 성능은 좋아진다.
 
   #### fine tuning - cnn sentence classification
@@ -72,11 +72,11 @@
   <img src="./images/cnn_sentence.png" width="550"/>
 - BERT + CNN classifier
 
-  <img src="./images/bert_cnn.png" width="400"/>
+  <img src="./images/bert_cnn.jpg" width="400"/>
 
   - pre train한 모델의 top layer에 cnn classification layer를 사용한다.
 
-## Experiments
+## Experiments / 실험 내역
 ### AI Hub dataset
 #### pretraining
 * Trial 1.
@@ -228,10 +228,10 @@
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |30k|128|$2*10^{-4}$|0|1024|8|2048|6|0|28|0.55|0.54|
 
-## Lessons Learned
+## Lessons Learned / 시행 착오
  - torch.exp(), torch.log()를 쓰거나, 값을 나눌 경우 값이 inf(무한대) 혹은 NaN(Not a number) 문제가 발생할 수 있음을 인지하고 구현해야 한다.
 
-## Conclusion and Constraints
+## Conclusion and Constraints / 결론 및 한계
 1. 초반에 hyper parameter를 탐색할 때는 큰 단위의 step으로 구분하여 탐색하는 것이 좋다. 큰 차이 없는 hyper parameter를 비교할 때는 성능 수치상으로도 큰 차이를 안내기 때문이다. 그 후 괄목할만한 hyper parameter가 나온다면 해당 hyper parameter에서 적은 step으로 세분화하여 탐색하는 것이 효율적인 것으로 보인다.
 
 2. 데이터셋이 적다면 dropout, weight decay같은 regularization을 추가하여 train데이터 학습에 방해를 주어 overfitting하지 않도록 막아준다. 데이터셋이 충분히 많다면 regularization을 주지 않아도 충분히 좋은 성능을 뽑아낼 수 있다.
@@ -240,12 +240,13 @@
 
 4. 한정된 resource를 고려하면 batch size와 model scale은 반비례한다. 이를 고려해 적절한 hyper parameter를 찾아야한다.
 
-## Future Work
+## Future Work / 향후 계획
 - fine tuning task의 데이터셋이 적은 관계로 다양한 방법을 시도해도 validation accuracy가 나아지지 않는다. data augmentation과 같은 방식으로 validation accuracy를 개선시킬 방법을 모색해야한다.
 - Pile 데이터셋으로 pretraining한 모델을 기반으로 fine tuning을 시도한다. AI Hub 데이터셋으로 pretraining한 모델과 다른 결과가 나올지 확인이 필요하다.
 - fine tuning 후, 성능 평가 지표를 confusion matrix로 시각화한다.
+- fine tuning된 모델로 kaggle NLP with disaster tweets 평가용 데이터셋을 예측하여 competetion에 제출한다.
 
-## References
+## References / 참고 문헌
 * Entire architecture of transformer: [Attention is all you need](https://arxiv.org/abs/1706.03762)
 * BPE: [Neural Machine Translation of Rare Words with Subword Units](https://arxiv.org/abs/1508.07909v5)
 * Masked Language Model: [BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/abs/1810.04805)
