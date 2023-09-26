@@ -30,6 +30,7 @@
   * AI Hub - 한국어-영어 번역(병렬) 말뭉치
     - AI 번역 엔진 개발을 위한 총 160만문장의 학습용 문장을 구축한 자연어 데이터를 제공한다.  
     <img src="./images/AIHub_KoEn_1.png" alt="AIHub_dataset" width="850"/>
+
     - https://aihub.or.kr 에서 회원가입 후 다운로드 요청을 해야한다. 관리자가 승인 후 다운로드 가능하다.
     - 데이터 예시  
       <img src="./images/AIHub_KoEn_3.png" alt="AIHub_dataset_example" width="800"/>
@@ -44,7 +45,8 @@
   * The Pile
     - 언어 모델 학습을 위한 800GB 이상의 대규모 학습 데이터세트로 구성된 영어 오픈 소스 데이터 세트이다.
     - github, ArXiv, wikipedia, youtube 자막, 웹텍스트 등 총 22개의 하위 데이터세트로 구성되어있다.  
-    <img src="./images/pile_overview.png" alt="pile_overview" width="550"/>
+      <img src="./images/pile_overview.png" alt="pile_overview" width="550"/>
+
     - The Pile 공식 홈페이지 https://pile.eleuther.ai/ 에서 데이터셋을 다운로드받거나 리눅스에서 아래 명령어로 다운로드 받을 수 있었으나 현재 다운로드 링크가 정상적이지 않아 다운로드받을 수 없다.
       ```shell
       wget -c (--tries=0) https://the-eye.eu/public/AI/pile/train/*.zst
@@ -55,6 +57,7 @@
   * BPE (Byte pair encoding)
     - 데이터에서 가장 많이 등장한 문자열을 병합해서 데이터를 압축하는 기법이다.  
     <img src="./images/bpe_fig1.png" alt="bpe_algorithm" width="350"/>
+
     - 생성된 BPE 사전  
       <img src="./images/bpe_fig2.png" alt="bpe_vocab_example" width="150"/>
     
@@ -233,7 +236,7 @@
     learning_rate: [0.00001~0.0005]
     ```
 
-  <img src="./images/pile_pretrain1.png" alt="pile_pretrain1" width="700"/>
+<img src="./images/pile_pretrain1.png" alt="pile_pretrain1" width="700"/>
 
   - 최고 성능을 낸 두 가지 hyper parameter 조합
 
