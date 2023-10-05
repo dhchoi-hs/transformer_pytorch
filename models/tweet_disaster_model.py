@@ -64,7 +64,8 @@ class TweetDisasterClassifierMLP(TweetDisasterClassifierBase):
 
 class TweetDisasterClassifierCNN(TweetDisasterClassifierBase):
     def __init__(self, pretrained_model: lm_encoder, unfreeze_last_layers=1,
-                 conv_filters=100, kernel_sizes=[3, 4, 5], dropout_p=0.1) -> None:
+                 remove_last_layers=0, conv_filters=100, kernel_sizes=[3, 4, 5],
+                 dropout_p=0.1) -> None:
         super().__init__(pretrained_model)
 
         self.cnns = nn.ModuleList([nn.Conv1d(
@@ -73,14 +74,23 @@ class TweetDisasterClassifierCNN(TweetDisasterClassifierBase):
         self.fc = Linear(len(self.cnns)*conv_filters, 1)
         self.dropout = Dropout.Dropout(dropout_p)
         self.unfreeze_last_layers = unfreeze_last_layers
+        self.remove_last_layers = remove_last_layers
         self.max_kernel_size = max(kernel_sizes)
         self.cnn_activation_function = nn.ReLU()
 
+        if remove_last_layers > 0:
+            if remove_last_layers >= len(self.pretrained_model.encoder.layers):
+                raise ValueError('size of removing last layers must be less than encoder layers.')
+            self.pretrained_model.encoder.layers = \
+                self.pretrained_model.encoder.layers[:-remove_last_layers]
+
     @classmethod
-    def from_pretrained(cls, model_file, _config, unfreeze_last_layers=1, conv_filters=100,
+    def from_pretrained(cls, model_file, _config, unfreeze_last_layers=1,
+                        remove_last_layers=0, conv_filters=100,
                         kernel_sizes=[3, 4, 5], dropout_p=0.1):
         pretrained_model = cls._load_from_pretrain(model_file, _config)
-        return cls(pretrained_model, unfreeze_last_layers, conv_filters, kernel_sizes, dropout_p)
+        return cls(pretrained_model, unfreeze_last_layers, remove_last_layers, 
+                   conv_filters, kernel_sizes, dropout_p)
 
     def train(self, mode: bool = True):
         super(TweetDisasterClassifierBase, self).train(mode)
@@ -120,7 +130,7 @@ if __name__ == '__main__':
     _config = load_config_file(CONFIG_FILE)
 
     model = TweetDisasterClassifierCNN.from_pretrained(
-        MODEL_FILE, _config, 9, 100, [3, 4, 5])
+        MODEL_FILE, _config, 9, 1, 100, [3, 4, 5])
     origin_model = model
     # model = torch.compile(model)
     # model.to('cuda:0')

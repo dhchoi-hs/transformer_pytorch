@@ -10,6 +10,7 @@ class FineTuningConfigData:
     compile_model: bool
     epoch: int
     unfreeze_last_layers: int
+    remove_last_layers: int
     batch_size: int
     learning_rate: float
     lr_scheduler: str

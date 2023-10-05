@@ -94,6 +94,7 @@ def train_n_val(config, train_dataset, valid_dataset, vocab, train_config, epoch
     else:
         model = origin_model
     model.to(device=device)
+    model.train()
 
     # txt = f'model information\n{separator}\n'
     num_params = 0
@@ -147,7 +148,6 @@ def train_n_val(config, train_dataset, valid_dataset, vocab, train_config, epoch
             summary_writer.add_scalar('epoch', current_epoch, step+1)
             for train_data in train_dataloader:
                 step += 1
-                model.train()
                 training_started = time.time()
                 train_loss, train_acc = run_step(train_data, model, loss_fn,
                                                  optim, True, device)
@@ -207,6 +207,7 @@ def train_n_val(config, train_dataset, valid_dataset, vocab, train_config, epoch
                             '%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
                             current_epoch, step, round(val_loss, 4),
                             round(val_acc, 4), round(elapsed_valid, 2))
+                        model.train()
 
                         if train_dataloader is None:
                             break

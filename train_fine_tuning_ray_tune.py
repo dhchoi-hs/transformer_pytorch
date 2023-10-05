@@ -33,6 +33,7 @@ torch.cuda.manual_seed_all(7)
 
 def train_n_val(config, dataset, vocab, pre_train_config, pre_trained_model, train_config):
     unfreeze_last_layers = config['unfreeze_last_layers']
+    remove_last_layers = config['remove_last_layers']
     learning_rate = config['learning_rate']
     conv_filters = config['conv_filters']
     weight_decay = config['weight_decay']
@@ -56,6 +57,7 @@ def train_n_val(config, dataset, vocab, pre_train_config, pre_trained_model, tra
     new_config = deepcopy(_config)
     new_config.learning_rate = learning_rate
     new_config.unfreeze_last_layers = unfreeze_last_layers
+    new_config.remove_last_layers = remove_last_layers
     new_config.conv_filters = conv_filters
     new_config.kernel_sizes = kernel_sizes
     new_config.weight_decay = weight_decay
@@ -86,7 +88,8 @@ def train_n_val(config, dataset, vocab, pre_train_config, pre_trained_model, tra
     get_logger().info('Used device type: %s', device.type)
     origin_model = TweetDisasterClassifierCNN.from_pretrained(
         pre_trained_model, pre_train_config, _config.unfreeze_last_layers,
-        _config.conv_filters, _config.kernel_sizes, dropout_p=_config.p_dropout)
+        _config.remove_last_layers, _config.conv_filters, _config.kernel_sizes,
+        dropout_p=_config.p_dropout)
 
     if _config.compile_model:
         model = torch.compile(origin_model)
@@ -142,7 +145,6 @@ def train_n_val(config, dataset, vocab, pre_train_config, pre_trained_model, tra
             summary_writer.add_scalar('epoch', current_epoch, step+1)
             for train_data in train_dataloader:
                 step += 1
-                model.train()
                 training_started = time.time()
                 train_loss, train_acc = run_step_fine_tuning(
                     train_data, model, loss_fn, optim, True, device)
@@ -206,7 +208,7 @@ def train_n_val(config, dataset, vocab, pre_train_config, pre_trained_model, tra
                         'val_acc': val_acc
                     }
                     session.report(results)
-
+                    model.train()
                     if train_dataloader is None:
                         break
             epoch_train_loss = .0
@@ -271,11 +273,11 @@ def main(
         vocab, fine_tuning_config.seq_len)
 
     config = {
-        "unfreeze_last_layers": tune.grid_search([1, 2]),
-        "learning_rate": tune.grid_search([1e-3, 1e-4, 5e-5]),
+        "unfreeze_last_layers": tune.grid_search([3, 99]),
+        "learning_rate": tune.grid_search([1e-4, 1e-5]),
         'conv_filters': tune.grid_search([100, 200, 300]),
         'kernel_sizes': tune.grid_search([[3, 4, 5], [4, 5, 6, 7]]),
-        'weight_decay': 0,
+        'weight_decay': tune.grid_search([0, 0.1, 0.3]),
         'p_dropout': tune.grid_search([0.2, 0.5]),
     }
     train_func = tune.with_resources(

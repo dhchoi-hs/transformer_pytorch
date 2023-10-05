@@ -89,8 +89,8 @@ def main(_pre_trained_config, pre_trained_model_file, _fine_tuning_config, _mode
 
     origin_model = TweetDisasterClassifierCNN.from_pretrained(
         pre_trained_model_file, pre_train_config, fine_tuning_config.unfreeze_last_layers,
-        fine_tuning_config.conv_filters, kernel_sizes=fine_tuning_config.kernel_sizes,
-        dropout_p=fine_tuning_config.p_dropout)
+        fine_tuning_config.remove_last_layers, fine_tuning_config.conv_filters,
+        kernel_sizes=fine_tuning_config.kernel_sizes, dropout_p=fine_tuning_config.p_dropout)
 
     if fine_tuning_config.compile_model:
         model = torch.compile(origin_model)
@@ -98,6 +98,7 @@ def main(_pre_trained_config, pre_trained_model_file, _fine_tuning_config, _mode
     else:
         model = origin_model
     model.to(device=device)
+    model.train()
 
     txt = f'model information\n{separator}\n'
     num_params = 0
@@ -192,7 +193,6 @@ def main(_pre_trained_config, pre_trained_model_file, _fine_tuning_config, _mode
     logging_interval = 20
     elapsed_train = 0
 
-    model.train()
     try:
         it = count(start_epoch+1) if fine_tuning_config.epoch is None else \
             range(start_epoch+1, fine_tuning_config.epoch+1)
@@ -243,7 +243,6 @@ def main(_pre_trained_config, pre_trained_model_file, _fine_tuning_config, _mode
                         val_loss, val_acc = run_epoch(
                             valid_dataloader, model, loss_fn, None, False,
                             sleep_between_step, device, True)
-                    model.train()
                     elapsed_valid = time.time() - valid_started
                     sw.add_scalar('elapsed/valid', elapsed_valid, step)
                     sw.add_scalar('Loss/valid', val_loss, step)
@@ -252,6 +251,7 @@ def main(_pre_trained_config, pre_trained_model_file, _fine_tuning_config, _mode
                         '%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
                         current_epoch, step, round(val_loss, 4), round(val_acc, 4),
                         round(elapsed_valid, 2))
+                    model.train()
 
                     if train_dataloader is None:
                         break
