@@ -4,11 +4,11 @@
 ## Introduction / 서론
 - 첫 study 대상으로 Transformer 모델을 선택하였다.
   - Transformer는 기존의 NLP 모델의 한계를 뛰어넘은 모델로 현재도 많은 모델이 Transformer의 인코더와 디코더를 기반으로 만들어지고있으며, 최근에는 NLP뿐만 아니라 Vision에서도 좋은 결과를 보이고있다.
-- 재해탐지 분야 관련 NLP Task로 다양한 정보가 실시간으로 올라오는 트위터 메시지가 실제로 발생한 재난/재해와 연관이 있는지 분류하는 Task를 선정했다.
-- encoder 기반의 BERT 모델은 문장 내 앞뒤 문맥을 모두 살필 수 있다는 양방향 성격을 가지고, decoder 기반의 GPT 모델은 문장 시작부터 순차적으로 계산하는 일방향 성격을 가지고 있다.
+- 재해탐지 분야 관련 NLP Task로 다양한 정보가 실시간으로 올라오는 트위터 메시지를 통해 실제로 발생한 재난/재해와 연관이 있는 메시지인지 분류하는 Task를 선정했다.
+- Transformer의 encoder 기반의 BERT 모델은 문장 내 앞뒤 문맥을 모두 살필 수 있다는 양방향 성격을 가지고, decoder 기반의 GPT 모델은 문장 시작부터 순차적으로 계산하는 일방향 성격을 가지고 있다.
 - 이런 이유로 GPT는 문장 생성에 강하고 BERT는 문장의 의미를 추출해내는데 강점을 가지고 있는 모델이다.
-- transformer의 encoder를 기반으로 한 BERT가 문장을 분류하는 task에서 뛰어난 결과를 보였기 때문에 BERT모델을 실험 모델로 선정하였다.
-- BERT 논문에 따르면 대표적으로 아래 4가지 유형에서 모델을 활용할 수 있다.
+- BERT 모델이 문장을 분류하는 task에서 뛰어난 결과를 보였기 때문에 BERT 모델을 실험 모델로 선정하였다.
+- BERT 논문에 따르면 대표적으로 아래 4가지 유형에서 모델을 활용할 수 있다. 트위터 재해탐지 Task는 단일 문장 분류에 속한다.
   1. 단일 문장 분류 (Single Sentence Classification Tasks)
   2. 두 문장의 관계 분류 (Sentence Pair Classification Tasks)
   3. 문장 내 단어 라벨링 (Single Sentence Tagging Tasks)
@@ -104,6 +104,7 @@
 ## Experiments / 실험 내역
 ### AI Hub dataset
 #### pretraining
+* pretraining을 하는 과정은 한번의 학습당 짧게는 1일, 길게는 일주일 이상이 소요되었다.
 * Trial 1 - 한글, 영어가 섞인 데이터셋으로 학습
   - 
 
@@ -187,7 +188,7 @@
 
 * Trial 1.
   -
-  - 아래와 같은 구성으로 hyper parameter 탐색을 하였다. 이는 Convolutional Neural Networks for Sentence Classification 논문에서 제시한 hyper parameter를 기준으로 삼았다.
+  - 아래와 같은 구성으로 hyper parameter 탐색을 하였고 총 72가지의 탐색을 하였다. 이는 Convolutional Neural Networks for Sentence Classification 논문에서 제시한 hyper parameter를 기준으로 삼았다.
     ```
     conv_filters: [100, 200, 300]
     freeze mode: [pretrained model 전체 freeze, pretrained model의 마지막 encoder layer 제외한 나머지 freeze]
@@ -235,8 +236,9 @@
 
 ### Pile dataset
 #### pretraining
-* ray tune framework로 hyperparameter 탐색
+* hyperparameter 탐색
   -
+  - ray tune framework를 사용하여 Pile 데이터셋을 pretraining하기위한 hyperparameter을 탐색하였다. 총 200가지의 탐색을 수행하였다.
   - search parameter
     ```
     d_model: [512, 768, 1024, 1536]
