@@ -18,7 +18,7 @@
 ## Preliminaries / 선행 연구
 - Transformer
   - 2017년 구글에서 발표한 논문 "Attention is all you need"에서 소개된 모델로 인코더-디코더 구조를 가지고있다.  
-  <img src="./images/transformer.png" alt="transformer_architecture" width="350"/>
+  <img src="./images/transformer.jpg" alt="transformer_architecture" width="400"/>
 
   - 아래와 같은 component로 구성되어있다.
     * Input Embedding
@@ -62,15 +62,6 @@
     wget -c (--tries=0) https://the-eye.eu/public/AI/pile/train/*.zst
     ```
 
-### tokenization
-* 데이터셋을 모델에 입력/출력 데이터로 사용할 수 있도록 문자를 토큰 단위로 나누는 전처리 작업이다.
-* BPE (Byte pair encoding)
-  - 데이터에서 가장 많이 등장한 문자열을 병합해서 데이터를 압축하는 기법이다.  
-  <img src="./images/bpe_fig1.png" alt="bpe_algorithm" width="350"/>
-
-  - 생성된 BPE 사전  
-    <img src="./images/bpe_fig2.png" alt="bpe_vocab_example" width="150"/>
-    
 ### models
 #### pre training
 * BERT 논문의 masked language model을 pre training방법으로 사용하였다. 이 pre training을 통해 모델은 문맥 정보를 잘 활용할 수 있게 된다.  
@@ -80,6 +71,125 @@
   - 80%: [MASK] token으로 변경
   - 10%: 임의의 token으로 변경
   - 10%: 변경하지 않고 그대로 둔다. 정답을 그대로 예측하는 이유는 올바른 정답에 대해 bias를 주기 위함이다.
+
+#### fine tuning
+- fine tuning을 위한 classification layer는 Convolutional Neural Networks for Sentence Classification 논문의 모델을 참고하여 적용하였다.
+  - 간단한 CNN모델으로 여러 classification task에서 SOTA를 달성하였고 다양한 문장 길이에도 적용할 수 있는 장점이 있다.  
+- Convolutional Neural Networks for Sentence Classification  
+  <img src="./images/cnn_sentence.png" alt="cnn_classification" width="550"/>
+  - pre train한 모델의 top layer에 cnn classification layer를 사용한다.
+
+## Experiments / 실험 내역
+### AI Hub dataset
+#### pre-training
+* pre-training을 하는 과정은 한번의 학습당 짧게는 1일, 길게는 일주일 이상이 소요되었다.
+* 총 학습을 반복한 횟수는 약 100번이며,  서버의 GPU 2대를 전부 사용하여 약 3개월이 소요되었다.
+* 최종 pre-training 모델 - learning rate scheduler 비교
+  -
+  <img src="./images/case7.png" alt="case7" width="700"/>
+|vocab size|batch|lr|weight decay|d_model|h|ff|layers|dropout|epoch|train/acc|valid/acc|
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+|5k|128|$2*10^{-4}$|$1*10^{-6}$|1024|8|2048|6|0.1|28|0.789|0.783|
+|5k|128|$2*10^{-4}$|0|1024|8|2048|6|0|45|0.816|0.791|
+|5k|128|$1*10^{-4}$|0|1024|8|2048|6|0|15|0.731|0.726|
+  - 회색 선이 최종 pre-training모델의 그래프로 exponential decay보다 cosine annealing scheduler가 더 좋은 성능을 보였다.
+  - 적절한 learning rate에서 가장 빠른 폭으로 감소하는 exponential decay는 학습에 적합하지 않다.
+
+
+#### fine tuning
+* 데이터셋이 적어 fine tuning dataset 전체를 충분히 학습해도 30분이 걸리지 않았다. ray tune를 사용해 hyper parameter를 탐색하기 적합하다고 판단하여 ray tune을 사용하였다. 
+* GPU가 아닌 colab으로 학습을 하였으며, 총 144가지수의 hyper parameter 탐색을 하였고 약 일주일 정도의 기간이 소요되었다.
+* Trial 1.
+  -
+  - 아래와 같은 구성으로 hyper parameter 탐색을 하였다. 이는 Convolutional Neural Networks for Sentence Classification 논문에서 제시한 hyper parameter를 기준으로 삼았다.
+    ```
+    conv_filters: [100, 200, 300]
+    freeze mode: [pretrained model 전체 freeze, pretrained model의 마지막 encoder layer 제외한 나머지 freeze]
+    kernel_sizes: [[3,4,5], [4,5,6,7]]
+    learning_rate: [0.001, 0.0001, 0.00005]
+    dropout: [0.2, 0.5]
+    ```
+  <img src="./images/aihub_fine_tuning1.png" alt="fine_tuning1" width="700"/>
+
+  - valid accuracy가 대부분 0.78~0.81에 위치하고있으며 괄목할만한 결과가 없다.
+  - 매번 전부 탐색해볼 수 없으므로, 현 결과에서 valid acc가 높은 4개, valid loss가 가장 낮은 4개를 선택하여 진행하였다. 이 8개의 조합에서 일관성있는 hyper parameter는 없었다.(Appendix 참조)
+
+### Pile dataset
+#### pretraining
+* hyperparameter 탐색
+  -
+  - ray tune framework를 사용하여 Pile 데이터셋을 pretraining하기위한 hyperparameter을 탐색하였다.
+  - 1개의 GPU로 총 200가지의 탐색을 수행하였고 GPU 메모리의 한계로 실제로 학습이된 모델은 22가지이다. 약 30일의 기간이 소요되었다.
+  - search parameter
+    ```
+    d_model: [512, 768, 1024, 1536]
+    ff: [2048, 3072, 4096]
+    h: [8, 12, 16]
+    layer: [3, 6, 9]
+    learning_rate: [0.00001~0.0005]
+    ```
+
+<img src="./images/pile_pretrain1.png" alt="pile_pretrain1" width="700"/>
+
+  - 최고 성능을 낸 두 가지 hyper parameter 조합
+
+  |batch|lr|weight decay|d_model|h|ff|layers|dropout|epoch|train/acc|valid/acc|
+  |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+  |128|$2*10^{-4}$|0|1024|8|2048|6|0|15|0.51|0.48|
+  |128|$1*10^{-4}$|0|1536|12|2048|6|0|15|0.51|0.48|
+  * dimension size 증가에 따른 모델 scale 및 학습시간 증가를 고려하여 성능차이가 크게 없는 d_model 1024로 선택하였다.
+    - 이 조합은 AI Hub에서 찾은 hyper parameter 조합과 동일하다.
+* full training  
+  - 
+  - hyper parameter 탐색을 통해 찾은 최고의 조합으로 최종 학습을 하였다. 6일의 학습 기간이 소요되었다.
+  <img src="./images/pile_pretrain2.png" alt="pile_pretrain2" width="700"/>
+
+|vocab size|batch|lr|weight decay|d_model|h|ff|layers|dropout|epoch|train/acc|valid/acc|
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+|30k|128|$2*10^{-4}$|0|1024|8|2048|6|0|28|0.55|0.54|
+  - AI Hub에 비해 vocab size가 훨씬 컸기 때문에 accuracy 수치가 상대적으로 낮게 나왔다.
+
+## Lessons Learned / 시행 착오
+ - torch.exp(), torch.log()를 쓰거나, 값을 나눌 경우 값이 inf(무한대) 혹은 NaN(Not a Number) 문제가 발생할 수 있음을 인지하고 구현해야 한다.
+
+## Conclusion / 결론
+  1. fine tuning 모델을 통해 영어 트윗 메시지가 재난/재해와 연관이 있는지 없는지 판단할 수 있는 모델을 만들었다. 모델을 이용해 실시간 트윗 메시지를 통해 실시간 재난/재해를 탐지할 수도 있다. 또한 한글 데이터셋을 수집하여 모델을 학습시킨다면 영어뿐만 아니라 한글 SNS 메시지로도 재난/재해를 탐지할 수 있다.
+  2. 학습 데이터가 충분치는 않았지만, AI Hub와 Pile 데이터셋을 통해 pre training된 BERT모델을 학습하였다. 이 모델은 tweet 메시지 분류 뿐만 아니라 다양한 목적의 NLP task에 활용될 수 있다.
+  3. 데이터 수집 및 전처리부터 fine tuning까지 일련의 NLP 학습 과정을 거침으로써, 다양한 데이터셋과 모델을 선택하여 학습할 수 있는 기반을 만들어놓았다.
+<!-- 1. 초반에 hyper parameter를 탐색할 때는 큰 단위의 step으로 구분하여 탐색하는 것이 좋다. 큰 차이 없는 hyper parameter를 비교할 때는 성능 수치상으로도 큰 차이를 안내기 때문이다. 그 후 괄목할만한 hyper parameter가 나온다면 해당 hyper parameter에서 적은 step으로 세분화하여 탐색하는 것이 효율적인 것으로 보인다.
+
+2. 데이터셋이 적다면 dropout, weight decay같은 regularization을 추가하여 train데이터 학습에 방해를 주어 overfitting하지 않도록 막아준다. 데이터셋이 충분히 많다면 regularization을 주지 않아도 충분히 좋은 성능을 뽑아낼 수 있다.
+
+3. 일정한 learning rate를 주는 것보다 적절한 learning rate scheduler를 사용하는 것이 당연히 좋은 결과를 보인다. 최고의 hyper parameter 조합을 찾은 상태에서 다양한 learning rate scheduler를 사용하는 것이 효율적일 것이다.
+
+4. 한정된 resource를 고려하면 batch size와 model scale은 반비례한다. 이를 고려해 적절한 hyper parameter를 찾아야한다. -->
+
+## Future Work / 향후 계획
+- fine tuning task의 데이터셋이 적은 관계로 다양한 방법을 시도해도 validation accuracy가 나아지지 않는다. data augmentation과 같은 방식으로 validation accuracy를 개선시킬 방법을 모색해야한다.
+- Pile 데이터셋으로 pretraining한 모델을 기반으로 fine tuning을 시도한다. AI Hub 데이터셋으로 pretraining한 모델과 다른 결과가 나올지 확인이 필요하다.
+- fine tuning 후, 성능 평가 지표를 confusion matrix로 시각화한다.
+- fine tuning된 모델로 kaggle NLP with disaster tweets 평가용 데이터셋을 예측하여 competetion에 제출한다.
+
+## References / 참고 문헌
+* Entire architecture of transformer: [Attention is all you need](https://arxiv.org/abs/1706.03762)
+* BPE: [Neural Machine Translation of Rare Words with Subword Units](https://arxiv.org/abs/1508.07909v5)
+* Masked Language Model: [BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/abs/1810.04805)
+* Masked Language Model-2: [RoBERTa: A Robustly Optimized BERT Pretraining Approach](https://arxiv.org/abs/1907.11692)
+* training dataset: [AI-hub; 한국어-영어 번역(병렬) 말뭉치](https://aihub.or.kr/aihubdata/data/view.do?currMenu=115&topMenu=100&dataSetSn=126),
+[The pile](https://pile.eleuther.ai/)
+* finetuning: [Convolutional Neural Networks for Sentence Classification](https://arxiv.org/abs/1408.5882)
+
+## Appendix / 부록
+### tokenization
+* 데이터셋을 모델에 입력/출력 데이터로 사용할 수 있도록 문자를 토큰 단위로 나누는 전처리 작업이다.
+* BPE (Byte pair encoding)
+  - 데이터에서 가장 많이 등장한 문자열을 병합해서 데이터를 압축하는 기법이다.  
+  <img src="./images/bpe_fig1.png" alt="bpe_algorithm" width="350"/>
+
+  - 생성된 BPE 사전  
+    <img src="./images/bpe_fig2.png" alt="bpe_vocab_example" width="150"/>
+
+### BERT dynamic masking
 - BERT 논문에서 제시한 static masking을 사용하지 않고 RoBERTa 논문에서 제시한 dynamic masking 방식을 참고하였다.  
   <img src="./images/masking.png" alt="roberta_masking" width="500"/>
 
@@ -89,22 +199,13 @@
 - 연속된 문장이 없는 데이터셋 특성을 고려하여 [CLS], [SEP] 토큰 제거하고 단일 문장을 학습에 사용했다.
 - BERT output token에서 linear transform을 사용하지 않고 embedding을 사용한다.
   - linear를 사용하지 않으므로 학습에 필요한 parameter수가 줄어들고 성능은 좋아진다.
-
-#### fine tuning
-- fine tuning을 위한 classification layer는 Convolutional Neural Networks for Sentence Classification 논문의 모델을 참고하여 적용하였다.
-  - 간단한 CNN모델으로 여러 classification task에서 SOTA를 달성하였고 다양한 문장 길이에도 적용할 수 있는 장점이 있다.  
-- Convolutional Neural Networks for Sentence Classification  
-  <img src="./images/cnn_sentence.png" alt="cnn_classification" width="550"/>
-- BERT + CNN classifier
-
+### fine tuning
+- BERT + CNN classifier  
   <img src="./images/bert_cnn.jpg" alt="bert_cnn_architecture" width="400"/>
 
-  - pre train한 모델의 top layer에 cnn classification layer를 사용한다.
-
-## Experiments / 실험 내역
-### AI Hub dataset
-#### pretraining
-* pretraining을 하는 과정은 한번의 학습당 짧게는 1일, 길게는 일주일 이상이 소요되었다.
+### Experiments / 실험 내역
+#### AI Hub dataset
+##### pretraining
 * Trial 1 - 한글, 영어가 섞인 데이터셋으로 학습
   - 
 
@@ -170,36 +271,9 @@
 |5k|128|$1*10^{-4}$|0|1024|8|2048|6|0|28|0.738|0.716|
   - transformer의 논문에서 제안하는 relu가 아닌 swish를 사용하여 학습한뒤 성능을 비교하였다.
   - 미세하지만 swish activation function이 더 좋은 성능을 보인다.
-
-* Trial 7 - learning rate scheduler 비교
-  -
-  <img src="./images/case7.png" alt="case7" width="700"/>
-|vocab size|batch|lr|weight decay|d_model|h|ff|layers|dropout|epoch|train/acc|valid/acc|
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-|5k|128|$2*10^{-4}$|$1*10^{-6}$|1024|8|2048|6|0.1|28|0.789|0.783|
-|5k|128|$2*10^{-4}$|0|1024|8|2048|6|0|45|0.816|0.791|
-|5k|128|$1*10^{-4}$|0|1024|8|2048|6|0|15|0.731|0.726|
-  - exponential decay보다 cosine annealing scheduler가 더 좋은 성능을 보였다.
-  - 적절한 learning rate에서 가장 빠른 폭으로 감소하는 exponential decay는 학습에 적합하지 않다.
 * 이외에도 최적의 model scale을 찾기 위해 다양한 batch size, d_model, layers 값을 주는 작업도 진행하였다.
 
-#### fine tuning
-* 데이터셋이 적어 fine tuning dataset 전체를 충분히 학습해도 30분이 걸리지 않는다. ray tune를 사용해 hyper parameter를 탐색하기 적합하다고 판단하여 ray tune을 사용하였다. 
-
-* Trial 1.
-  -
-  - 아래와 같은 구성으로 hyper parameter 탐색을 하였고 총 72가지의 탐색을 하였다. 이는 Convolutional Neural Networks for Sentence Classification 논문에서 제시한 hyper parameter를 기준으로 삼았다.
-    ```
-    conv_filters: [100, 200, 300]
-    freeze mode: [pretrained model 전체 freeze, pretrained model의 마지막 encoder layer 제외한 나머지 freeze]
-    kernel_sizes: [[3,4,5], [4,5,6,7]]
-    learning_rate: [0.001, 0.0001, 0.00005]
-    dropout: [0.2, 0.5]
-    ```
-  <img src="./images/aihub_fine_tuning1.png" alt="fine_tuning1" width="700"/>
-
-  - valid accuracy가 대부분 0.78~0.81에 위치하고있으며 괄목할만한 결과가 없다.
-  - 매번 전부 탐색해볼 수 없으므로, 현 결과에서 valid acc가 높은 4개, valid loss가 가장 낮은 4개를 선택하여 진행하였다. 이 8개의 조합에서 일관성있는 hyper parameter는 없었다.
+##### fine tuning
 * Trial 2.
   -
   - Trial 1에서 얻은 8가지 조합에서 weight decay를 주고, dropout을 다르게 하였다.
@@ -232,67 +306,4 @@
   <img src="./images/aihub_fine_tuning4.png" alt="fine_tuning4" width="700"/>
 
   - weight decay값이 커져 train acc, loss에 점수가 낮아졌다. validation 값은 큰 편화가 없었다.
-* 마지막 3개의 encoder layer와 전체 encoder layer까지 학습시키는 시도를 해보았으니 이전 결과와 마찬가지로 0.78~0.81의 valid accuracy를 보였으며, 괄목할만한 결과가 나오지 않았다. 데이터셋이 충분치 않아 문제가 발생하는 것으로 보인다. 
-
-### Pile dataset
-#### pretraining
-* hyperparameter 탐색
-  -
-  - ray tune framework를 사용하여 Pile 데이터셋을 pretraining하기위한 hyperparameter을 탐색하였다. 총 200가지의 탐색을 수행하였다.
-  - search parameter
-    ```
-    d_model: [512, 768, 1024, 1536]
-    ff: [2048, 3072, 4096]
-    h: [8, 12, 16]
-    layer: [3, 6, 9]
-    learning_rate: [0.00001~0.0005]
-    ```
-
-<img src="./images/pile_pretrain1.png" alt="pile_pretrain1" width="700"/>
-
-  - 최고 성능을 낸 두 가지 hyper parameter 조합
-
-  |batch|lr|weight decay|d_model|h|ff|layers|dropout|epoch|train/acc|valid/acc|
-  |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-  |128|$2*10^{-4}$|0|1024|8|2048|6|0|15|0.51|0.48|
-  |128|$1*10^{-4}$|0|1536|12|2048|6|0|15|0.51|0.48|
-  * dimension size 증가에 따른 모델 scale 및 학습시간 증가를 고려하여 성능차이가 크게 없는 d_model 1024로 선택하였다.
-    - 이 조합은 AI Hub에서 찾은 hyper parameter 조합과 동일하다.
-* full training  
-  - 
-  <img src="./images/pile_pretrain2.png" alt="pile_pretrain2" width="700"/>
-
-|vocab size|batch|lr|weight decay|d_model|h|ff|layers|dropout|epoch|train/acc|valid/acc|
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-|30k|128|$2*10^{-4}$|0|1024|8|2048|6|0|28|0.55|0.54|
-  - AI Hub에 비해 vocab size가 훨씬 컸기 때문에 accuracy 수치가 상대적으로 낮게 나왔다.
-
-## Lessons Learned / 시행 착오
- - torch.exp(), torch.log()를 쓰거나, 값을 나눌 경우 값이 inf(무한대) 혹은 NaN(Not a Number) 문제가 발생할 수 있음을 인지하고 구현해야 한다.
-
-## Conclusion / 결론
-  1. fine tuning 모델을 통해 영어 트윗 메시지가 재난/재해와 연관이 있는지 없는지 판단할 수 있는 모델을 만들었다. 모델을 이용해 실시간 트윗 메시지를 통해 실시간 재난/재해를 탐지할 수도 있다. 또한 한글 데이터셋을 수집하여 모델을 학습시킨다면 영어뿐만 아니라 한글 SNS 메시지로도 재난/재해를 탐지할 수 있다.
-  2. 학습 데이터가 충분치는 않았지만, AI Hub와 Pile 데이터셋을 통해 pre training된 BERT모델을 학습하였다. 이 모델은 tweet 메시지 분류 뿐만 아니라 다양한 목적의 NLP task에 활용될 수 있다.
-  3. 데이터 수집 및 전처리부터 fine tuning까지 일련의 NLP 학습 과정을 거침으로써, 다양한 데이터셋과 모델을 선택하여 학습할 수 있는 기반을 만들어놓았다.
-<!-- 1. 초반에 hyper parameter를 탐색할 때는 큰 단위의 step으로 구분하여 탐색하는 것이 좋다. 큰 차이 없는 hyper parameter를 비교할 때는 성능 수치상으로도 큰 차이를 안내기 때문이다. 그 후 괄목할만한 hyper parameter가 나온다면 해당 hyper parameter에서 적은 step으로 세분화하여 탐색하는 것이 효율적인 것으로 보인다.
-
-2. 데이터셋이 적다면 dropout, weight decay같은 regularization을 추가하여 train데이터 학습에 방해를 주어 overfitting하지 않도록 막아준다. 데이터셋이 충분히 많다면 regularization을 주지 않아도 충분히 좋은 성능을 뽑아낼 수 있다.
-
-3. 일정한 learning rate를 주는 것보다 적절한 learning rate scheduler를 사용하는 것이 당연히 좋은 결과를 보인다. 최고의 hyper parameter 조합을 찾은 상태에서 다양한 learning rate scheduler를 사용하는 것이 효율적일 것이다.
-
-4. 한정된 resource를 고려하면 batch size와 model scale은 반비례한다. 이를 고려해 적절한 hyper parameter를 찾아야한다. -->
-
-## Future Work / 향후 계획
-- fine tuning task의 데이터셋이 적은 관계로 다양한 방법을 시도해도 validation accuracy가 나아지지 않는다. data augmentation과 같은 방식으로 validation accuracy를 개선시킬 방법을 모색해야한다.
-- Pile 데이터셋으로 pretraining한 모델을 기반으로 fine tuning을 시도한다. AI Hub 데이터셋으로 pretraining한 모델과 다른 결과가 나올지 확인이 필요하다.
-- fine tuning 후, 성능 평가 지표를 confusion matrix로 시각화한다.
-- fine tuning된 모델로 kaggle NLP with disaster tweets 평가용 데이터셋을 예측하여 competetion에 제출한다.
-
-## References / 참고 문헌
-* Entire architecture of transformer: [Attention is all you need](https://arxiv.org/abs/1706.03762)
-* BPE: [Neural Machine Translation of Rare Words with Subword Units](https://arxiv.org/abs/1508.07909v5)
-* Masked Language Model: [BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding](https://arxiv.org/abs/1810.04805)
-* Masked Language Model-2: [RoBERTa: A Robustly Optimized BERT Pretraining Approach](https://arxiv.org/abs/1907.11692)
-* training dataset: [AI-hub; 한국어-영어 번역(병렬) 말뭉치](https://aihub.or.kr/aihubdata/data/view.do?currMenu=115&topMenu=100&dataSetSn=126),
-[The pile](https://pile.eleuther.ai/)
-* finetuning: [Convolutional Neural Networks for Sentence Classification](https://arxiv.org/abs/1408.5882)
+  * 마지막 3개의 encoder layer와 전체 encoder layer까지 학습시키는 시도를 해보았으나 이전 결과와 마찬가지로 0.78~0.81의 valid accuracy를 보였으며, 괄목할만한 결과가 나오지 않았다. 데이터셋이 충분치 않아 문제가 발생하는 것으로 보인다. 
