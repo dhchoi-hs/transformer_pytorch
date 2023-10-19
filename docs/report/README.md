@@ -63,8 +63,8 @@
     ```
 
 ### models
-#### pre training
-* BERT 논문의 masked language model을 pre training방법으로 사용하였다. 이 pre training을 통해 모델은 문맥 정보를 잘 활용할 수 있게 된다.  
+#### pre-training
+* BERT 논문의 masked language model을 pre-training방법으로 사용하였다. 이 pre-training을 통해 모델은 문맥 정보를 잘 활용할 수 있게 된다.  
 <img src="./images/bert_mlm.png" alt="bert_mlm" width="500"/>
 
 - BERT 논문에 따르면, 입력 token 중 15% token을 예측하게되는데, 그 15%의 token을 아래 비율대로 처리한다.
@@ -77,12 +77,12 @@
   - 간단한 CNN모델으로 여러 classification task에서 SOTA를 달성하였고 다양한 문장 길이에도 적용할 수 있는 장점이 있다.  
 - Convolutional Neural Networks for Sentence Classification  
   <img src="./images/cnn_sentence.png" alt="cnn_classification" width="550"/>
-  - pre train한 모델의 top layer에 cnn classification layer를 사용한다.
+  - pre-train한 모델의 top layer에 cnn classification layer를 사용한다.
 
 ## Experiments / 실험 내역
 ### AI Hub dataset
 #### pre-training
-* pre-training을 하는 과정은 한번의 학습당 짧게는 1일, 길게는 일주일 이상이 소요되었다.
+* pre-training hyper parameter를 탐색하는 과정은 자동 탐색 툴을 사용하지 않고 직접 수동으로 탐색하였다. 이 과정은 한번의 학습당 짧게는 1일, 길게는 일주일 이상이 소요되었다.
 * 총 학습을 반복한 횟수는 약 100번이며,  서버의 GPU 2대를 전부 사용하여 약 3개월이 소요되었다.
 * 최종 pre-training 모델 - learning rate scheduler 비교
   -
@@ -104,7 +104,7 @@
   - 아래와 같은 구성으로 hyper parameter 탐색을 하였다. 이는 Convolutional Neural Networks for Sentence Classification 논문에서 제시한 hyper parameter를 기준으로 삼았다.
     ```
     conv_filters: [100, 200, 300]
-    freeze mode: [pretrained model 전체 freeze, pretrained model의 마지막 encoder layer 제외한 나머지 freeze]
+    freeze mode: [pre-trained model 전체 freeze, pre-trained model의 마지막 encoder layer 제외한 나머지 freeze]
     kernel_sizes: [[3,4,5], [4,5,6,7]]
     learning_rate: [0.001, 0.0001, 0.00005]
     dropout: [0.2, 0.5]
@@ -115,10 +115,10 @@
   - 매번 전부 탐색해볼 수 없으므로, 현 결과에서 valid acc가 높은 4개, valid loss가 가장 낮은 4개를 선택하여 진행하였다. 이 8개의 조합에서 일관성있는 hyper parameter는 없었다.(Appendix 참조)
 
 ### Pile dataset
-#### pretraining
+#### pre-training
 * hyperparameter 탐색
   -
-  - ray tune framework를 사용하여 Pile 데이터셋을 pretraining하기위한 hyperparameter을 탐색하였다.
+  - ray tune framework를 사용하여 Pile 데이터셋을 pre-training하기위한 hyperparameter을 탐색하였다.
   - 1개의 GPU로 총 200가지의 탐색을 수행하였고 GPU 메모리의 한계로 실제로 학습이된 모델은 22가지이다. 약 30일의 기간이 소요되었다.
   - search parameter
     ```
@@ -154,7 +154,7 @@
 
 ## Conclusion / 결론
   1. fine tuning 모델을 통해 영어 트윗 메시지가 재난/재해와 연관이 있는지 없는지 판단할 수 있는 모델을 만들었다. 모델을 이용해 실시간 트윗 메시지를 통해 실시간 재난/재해를 탐지할 수도 있다. 또한 한글 데이터셋을 수집하여 모델을 학습시킨다면 영어뿐만 아니라 한글 SNS 메시지로도 재난/재해를 탐지할 수 있다.
-  2. 학습 데이터가 충분치는 않았지만, AI Hub와 Pile 데이터셋을 통해 pre training된 BERT모델을 학습하였다. 이 모델은 tweet 메시지 분류 뿐만 아니라 다양한 목적의 NLP task에 활용될 수 있다.
+  2. 학습 데이터가 충분치는 않았지만, AI Hub와 Pile 데이터셋을 통해 pre-training된 BERT모델을 학습하였다. 이 모델은 tweet 메시지 분류 뿐만 아니라 다양한 목적의 NLP task에 활용될 수 있다.
   3. 데이터 수집 및 전처리부터 fine tuning까지 일련의 NLP 학습 과정을 거침으로써, 다양한 데이터셋과 모델을 선택하여 학습할 수 있는 기반을 만들어놓았다.
 <!-- 1. 초반에 hyper parameter를 탐색할 때는 큰 단위의 step으로 구분하여 탐색하는 것이 좋다. 큰 차이 없는 hyper parameter를 비교할 때는 성능 수치상으로도 큰 차이를 안내기 때문이다. 그 후 괄목할만한 hyper parameter가 나온다면 해당 hyper parameter에서 적은 step으로 세분화하여 탐색하는 것이 효율적인 것으로 보인다.
 
@@ -166,7 +166,7 @@
 
 ## Future Work / 향후 계획
 - fine tuning task의 데이터셋이 적은 관계로 다양한 방법을 시도해도 validation accuracy가 나아지지 않는다. data augmentation과 같은 방식으로 validation accuracy를 개선시킬 방법을 모색해야한다.
-- Pile 데이터셋으로 pretraining한 모델을 기반으로 fine tuning을 시도한다. AI Hub 데이터셋으로 pretraining한 모델과 다른 결과가 나올지 확인이 필요하다.
+- Pile 데이터셋으로 pre-training한 모델을 기반으로 fine tuning을 시도한다. AI Hub 데이터셋으로 pre-training한 모델과 다른 결과가 나올지 확인이 필요하다.
 - fine tuning 후, 성능 평가 지표를 confusion matrix로 시각화한다.
 - fine tuning된 모델로 kaggle NLP with disaster tweets 평가용 데이터셋을 예측하여 competetion에 제출한다.
 
@@ -205,7 +205,7 @@
 
 ### Experiments / 실험 내역
 #### AI Hub dataset
-##### pretraining
+##### pre-training
 * Trial 1 - 한글, 영어가 섞인 데이터셋으로 학습
   - 
 
