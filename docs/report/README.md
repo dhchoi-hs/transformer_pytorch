@@ -78,7 +78,9 @@
 - Convolutional Neural Networks for Sentence Classification  
   <img src="./images/cnn_sentence.png" alt="cnn_classification" width="550"/>
   - pre-train한 모델의 top layer에 cnn classification layer를 사용한다.
-
+### fine tuning
+- BERT + CNN classifier  
+  <img src="./images/bert_cnn.jpg" alt="bert_cnn_architecture" width="400"/>
 ## Experiments / 실험 내역
 ### AI Hub dataset
 #### pre-training
@@ -86,7 +88,7 @@
 * 총 학습을 반복한 횟수는 약 100번이며,  서버의 GPU 2대를 전부 사용하여 약 3개월이 소요되었다.
 * 최종 pre-training 모델 - learning rate scheduler 비교
   -
-  <img src="./images/case7.png" alt="case7" width="700"/>
+  <img src="./images/case7.jpeg" alt="case7" width="700"/>
 |vocab size|batch|lr|weight decay|d_model|h|ff|layers|dropout|epoch|train/acc|valid/acc|
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |5k|128|$2*10^{-4}$|$1*10^{-6}$|1024|8|2048|6|0.1|28|0.789|0.783|
@@ -109,7 +111,7 @@
     learning_rate: [0.001, 0.0001, 0.00005]
     dropout: [0.2, 0.5]
     ```
-  <img src="./images/aihub_fine_tuning1.png" alt="fine_tuning1" width="700"/>
+  <img src="./images/aihub_fine_tuning1.jpeg" alt="fine_tuning1" width="700"/>
 
   - valid accuracy가 대부분 0.78~0.81에 위치하고있으며 괄목할만한 결과가 없다.
   - 매번 전부 탐색해볼 수 없으므로, 현 결과에서 valid acc가 높은 4개, valid loss가 가장 낮은 4개를 선택하여 진행하였다. 이 8개의 조합에서 일관성있는 hyper parameter는 없었다.(Appendix 참조)
@@ -129,7 +131,7 @@
     learning_rate: [0.00001~0.0005]
     ```
 
-<img src="./images/pile_pretrain1.png" alt="pile_pretrain1" width="700"/>
+<img src="./images/pile_pretrain1.jpeg" alt="pile_pretrain1" width="700"/>
 
   - 최고 성능을 낸 두 가지 hyper parameter 조합
 
@@ -142,7 +144,7 @@
 * full training  
   - 
   - hyper parameter 탐색을 통해 찾은 최고의 조합으로 최종 학습을 하였다. 6일의 학습 기간이 소요되었다.
-  <img src="./images/pile_pretrain2.png" alt="pile_pretrain2" width="700"/>
+  <img src="./images/pile_pretrain2.jpeg" alt="pile_pretrain2" width="700"/>
 
 |vocab size|batch|lr|weight decay|d_model|h|ff|layers|dropout|epoch|train/acc|valid/acc|
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -199,9 +201,6 @@
 - 연속된 문장이 없는 데이터셋 특성을 고려하여 [CLS], [SEP] 토큰 제거하고 단일 문장을 학습에 사용했다.
 - BERT output token에서 linear transform을 사용하지 않고 embedding을 사용한다.
   - linear를 사용하지 않으므로 학습에 필요한 parameter수가 줄어들고 성능은 좋아진다.
-### fine tuning
-- BERT + CNN classifier  
-  <img src="./images/bert_cnn.jpg" alt="bert_cnn_architecture" width="400"/>
 
 ### Experiments / 실험 내역
 #### AI Hub dataset
@@ -219,7 +218,7 @@
 
 * Trial 2 - weight decay 비교
   - 
-  <img src="./images/case2.png" alt="case2" width="750"/>
+  <img src="./images/case2.jpeg" alt="case2" width="750"/>
 |batch|lr|weight decay|d_model|h|ff|layers|dropout|epoch|train/acc|valid/acc|
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |256|$5*10^{-4}$|$1*10^{-5}$|512|8|2048|3|0.1|32|0.44|0.45|
@@ -230,7 +229,7 @@
 
 * Trial 3 - BPE 사전 크기에 따른 성능 비교
   -
-  <img src="./images/case3.png" alt="case3" width="750"/>
+  <img src="./images/case3.jpeg" alt="case3" width="750"/>
 |vocab size|batch|lr|weight decay|d_model|h|ff|layers|dropout|epoch|train/acc|valid/acc|
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |10k|256|$5*10^{-5}$|$1*10^{-5}$|512|8|2048|3|0.1|31|0.57|0.59|
@@ -243,7 +242,7 @@
 
 * Trial 4 - learning rate 에 따른 학습 성능 비교
   -
-  <img src="./images/case4.png" alt="case4" width="750"/>
+  <img src="./images/case4.jpeg" alt="case4" width="750"/>
 |vocab size|batch|lr|weight decay|d_model|h|ff|layers|dropout|epoch|train/acc|valid/acc|
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |10k|256|$5*10^{-4}$|$1*10^{-6}$|512|8|2048|3|0.1|39|0.60|0.62|
@@ -252,7 +251,7 @@
 
 * Trial 5 - 데이터셋 크기와 regularization 비교
   -
-  <img src="./images/case5.png" alt="case5" width="750"/>
+  <img src="./images/case5.jpeg" alt="case5" width="750"/>
 |dataset|vocab size|batch|lr|weight decay|d_model|h|ff|layers|dropout|epoch|train/acc|valid/acc|
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |1/5|5k|128|$1*10^{-4}$|0|1024|8|2048|6|0|418|0.91|0.68|
@@ -264,7 +263,7 @@
 
 * Trial 6 - activation function 비교
   -
-  <img src="./images/case6.png" alt="case6" width="750"/>
+  <img src="./images/case6.jpeg" alt="case6" width="750"/>
 |vocab size|batch|lr|weight decay|d_model|h|ff|layers|dropout|epoch|train/acc|valid/acc|
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |5k|128|$1*10^{-4}$|0|1024|8|2048|6|0|28|0.742|0.711|
@@ -282,7 +281,7 @@
     weight_decay: [0.001, 0.0001]
     dropout: [0, 0.2, 0.5]
     ```
-  <img src="./images/aihub_fine_tuning2.png" alt="fine_tuning2" width="700"/>
+  <img src="./images/aihub_fine_tuning2.jpeg" alt="fine_tuning2" width="700"/>
 
   - weight decay를 줘도 특별히 좋은 결과가 나타나지 않았다.
 * Trial 3.
@@ -293,17 +292,45 @@
     weight_decay: [0.01]
     dropout: [0, 0.2, 0.5]
     ```
-  <img src="./images/aihub_fine_tuning3.png" alt="fine_tuning3" width="700"/>
+  <img src="./images/aihub_fine_tuning3.jpeg" alt="fine_tuning3" width="700"/>
 
   - 여전히 좋은 결과를 나타내지 않았다.
 * Trial 4.
+  -
   - 더 높은 weight decay를 주었다.
   - search parameter
     ```
     weight_decay: [0.1, 0.4]
     dropout: [0, 0.2, 0.5]
     ```
-  <img src="./images/aihub_fine_tuning4.png" alt="fine_tuning4" width="700"/>
+  <img src="./images/aihub_fine_tuning4.jpeg" alt="fine_tuning4" width="700"/>
 
   - weight decay값이 커져 train acc, loss에 점수가 낮아졌다. validation 값은 큰 편화가 없었다.
   * 마지막 3개의 encoder layer와 전체 encoder layer까지 학습시키는 시도를 해보았으나 이전 결과와 마찬가지로 0.78~0.81의 valid accuracy를 보였으며, 괄목할만한 결과가 나오지 않았다. 데이터셋이 충분치 않아 문제가 발생하는 것으로 보인다. 
+* Trial 5.
+  -
+  - encoder의 마지막 layer 일부를 삭제하여 abstraction level을 낮춰서 학습하였다.
+  - search parameter
+  ```
+  conv_filters: 100
+  kernel_sizes: 3, 4, 5
+  learning_rate: 0.0001
+  dropout: [0.2, 0.5, 0.7]
+  remove_last_layers: [1, 2]
+  unfreeze_last_layers: [0, 1]
+  weight decay: [0.1, 0.2, 0.3]
+  ```
+  <img src="./images/aihub_fine_tuning5.jpeg" alt="fine_tuning5" width="700"/>
+* Trial 6.
+  - train:valid 데이터셋 비율을 9:1에서 7:3으로 변경하여 학습하였다.
+  - search parameter
+  ```
+  conv_filters: 100
+  kernel_sizes: 3, 4, 5
+  learning_rate: 0.0001
+  dropout: [0.2, 0.5, 0.7]
+  remove_last_layers: [1, 2]
+  unfreeze_last_layers: [0, 1]
+  weight decay: [0.1, 0.2, 0.3]
+  ```
+  <img src="./images/aihub_fine_tuning6.jpeg" alt="fine_tuning6" width="700"/>
