@@ -106,19 +106,20 @@ class TweetDisasterClassifierCNN(TweetDisasterClassifierBase):
         _x = self.pretrained_model(x, mask)
         outputs = []
         for input_sentence, sentence in zip(x, _x):
+            # remove PAD tokens not needed for cnn.
             sentence_without_padding = sentence[input_sentence != self.pretrained_model.padding_idx]
+            # sentence length must not be less than kernel size.
             if sentence_without_padding.size(0) < self.max_kernel_size:
                 sentence_without_padding = F.pad(
                     sentence_without_padding,
                     (0, 0, 0, self.max_kernel_size - sentence_without_padding.size(0)))
             sentence_without_padding = sentence_without_padding.transpose(-1, -2)
-            conved_list = [cnn(sentence_without_padding)
-                           for cnn in self.cnns]
+            conved_list = [cnn(sentence_without_padding) for cnn in self.cnns]
             outputs.append(torch.cat(
                 [self.cnn_activation_function(F.max_pool1d(conved, conved.size(-1))).
                  transpose(-1, -2).squeeze(-2) for conved in conved_list]))
 
-        return self.fc(self.dropout(torch.stack(outputs))).sigmoid().squeeze(-1)
+        return self.fc(self.dropout(torch.stack(outputs))).sigmoid()
 
 
 if __name__ == '__main__':
