@@ -79,7 +79,6 @@ def run_epoch(
         criterion,
         optim=None,
         train_mode=True,
-        sleep=None,
         device=None,
         fine_tuning=False):
     if train_mode:
@@ -95,7 +94,5 @@ def run_epoch(
         running_loss += step_loss
         running_acc += step_acc
         pbar.set_description(f'{mode} loss: {round(step_loss, 4):>8} acc: {round(step_acc, 4):>8}')
-        if sleep:
-            time.sleep(sleep)
 
     return running_loss/total_step, running_acc/total_step

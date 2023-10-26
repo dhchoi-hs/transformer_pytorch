@@ -39,7 +39,7 @@ class PredictMasked:
 
         # # # 3. load ckpt
         ckpt = checkpoint.load_ckpt(_model_file)
-        self.model.load_state_dict(ckpt['model_state_dict'])
+        self.model.load_state_dict(ckpt['model_state_dict'] if 'model_state_dict' in ckpt else ckpt)
         self.model.train(False)
         self.max_seq_len = _config.seq_len
 
@@ -105,9 +105,9 @@ class PredictMasked:
         return await self.handle_batch(request.query_params["text"])
 
 
-MODEL_DIR = "/data/dhchoi/trained/sunny_side_up/acc97_full_newloader"
+MODEL_DIR = "/data/dhchoi/trained/sunny_side_up/v5k_bat128_d1024_h8_lyr6_ff2048_lr2e-4dcosinelr"
 
 config = configuration.load_config_file(os.path.join(MODEL_DIR, 'config_ln_encoder.yaml'))
-model_file = os.path.join(MODEL_DIR, 'checkpoint.pt')
+model_file = os.path.join(MODEL_DIR, 'model_670000.pt')
 
 generator = PredictMasked.bind(config, model_file)
