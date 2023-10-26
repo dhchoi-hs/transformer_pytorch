@@ -41,7 +41,7 @@ class TweetDisasterDataset(Dataset):
         self.lines = [list(map(int, line.strip().split(','))) for line in self.lines]
         with open(label_file, 'rt', encoding='utf8') as f:
             self.labels = f.readlines()
-        self.labels = list(map(int, self.labels))
+        self.labels = [[int(label)] for label in self.labels]
 
         if len(self.lines) != len(self.labels):
             raise IndexError('text and label length are different!')
