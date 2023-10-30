@@ -2,6 +2,7 @@
 - Transformer의 Encoder stack을 사용한 BERT 모델 학습 연구 보고서
 
 ## Introduction / 서론
+<!-- 왜 트랜스포머를 시작했고 BERT를 했는지에 대한 설명. -->
 - 첫 study 대상으로 Transformer 모델을 선택하였다.
   - Transformer는 기존의 NLP 모델의 한계를 뛰어넘은 모델로 현재도 많은 모델이 Transformer의 인코더와 디코더를 기반으로 만들어지고있으며, 최근에는 NLP뿐만 아니라 Vision에서도 좋은 결과를 보이고있다.
 - 재해탐지 분야 관련 NLP Task로 다양한 정보가 실시간으로 올라오는 트위터 메시지를 통해 실제로 발생한 재난/재해와 연관이 있는 메시지인지 분류하는 Task를 선정했다.
@@ -13,7 +14,6 @@
   2. 두 문장의 관계 분류 (Sentence Pair Classification Tasks)
   3. 문장 내 단어 라벨링 (Single Sentence Tagging Tasks)
   4. 묻고 답하기 (Quesiton & Answering Tasks)
-<!-- 연구를 위해 어떤 데이터셋과 모델을 썼는지, 실험을 통해 어떤 결과가 나왔는지 설명하겠다. -->
 
 ## Preliminaries / 선행 연구
 - Transformer
@@ -37,6 +37,9 @@
 
 ## Methods / 연구 방법
 ### dataset
+* pre-train, fine tuning 학습에 사용한 데이터셋 소개
+#### pre-training dataset
+* pre-training을 위해서 AI Hub와 Pile 데이터셋으로 학습을 하였다.
 * AI Hub - 한국어-영어 번역(병렬) 말뭉치
   - AI 번역 엔진 개발을 위한 총 160만문장의 학습용 문장을 구축한 자연어 데이터를 제공한다.  
   <img src="./images/AIHub_KoEn_1.png" alt="AIHub_dataset" width="850"/>
@@ -45,14 +48,8 @@
   - 데이터 예시)  
     <img src="./images/AIHub_KoEn_3.png" alt="AIHub_dataset_example" width="800"/>
 
-* kaggle - tweet disaster dataset
-  - 일반 트윗 메시지와 재난 관련 트윗 메시지가 혼합되어 트윗 메시지가 재난/재해와 연관이 있는지 구분하는 데이터셋이다.
-  - 총 7613개의 학습용 문장/라벨을 제공한다.
-  - https://www.kaggle.com/competitions/nlp-getting-started/data 에서 로그인 후 다운로드를 할 수 있다.
-  - 데이터 예시)  
-    <img src="./images/tweet_disaster_dataset.png" alt="tweet_disaster_example" width="600"/>
-
 * The Pile
+  - AI Hub 데이터셋보다 많은 양으로 학습하기 위해 Pile 데이터셋으로도 pre-training을 하였다.
   - 언어 모델 학습을 위한 800GB 이상의 대규모 학습 데이터세트로 구성된 영어 오픈 소스 데이터 세트이다.
   - github, ArXiv, wikipedia, youtube 자막, 웹텍스트 등 총 22개의 하위 데이터세트로 구성되어있다.  
     <img src="./images/pile_overview.png" alt="pile_overview" width="550"/>
@@ -62,9 +59,19 @@
     wget -c (--tries=0) https://the-eye.eu/public/AI/pile/train/*.zst
     ```
 
+#### fine tuning dataset
+* fine tuning은 kaggle에서 제공하는 트위터 재해 데이터셋을 사용한다.
+* kaggle - tweet disaster dataset
+  - 일반 트윗 메시지와 재난 관련 트윗 메시지가 혼합되어 트윗 메시지가 재난/재해와 연관이 있는지 구분하는 데이터셋이다.
+  - 총 7613개의 학습용 문장/라벨을 제공한다.
+  - https://www.kaggle.com/competitions/nlp-getting-started/data 에서 로그인 후 다운로드를 할 수 있다.
+  - 데이터 예시)  
+    <img src="./images/tweet_disaster_dataset.png" alt="tweet_disaster_example" width="600"/>
+
 ### models
-#### pre-training
-* BERT 논문의 masked language model을 pre-training방법으로 사용하였다. 이 pre-training을 통해 모델은 문맥 정보를 잘 활용할 수 있게 된다.  
+#### pre-training (사전 학습)
+* pre-training방법으로 BERT 논문의 masked language model을 사용하였다.
+* masked language model은 입력 문장에서 임의의 단어를 가리고, 모델이 가려진 위치의 단어를 예측한다. 가려진 단어의 앞 뒤 문맥만 가지고 예측하기 때문에 이 과정을 통해 모델은 문맥 정보를 잘 활용할 수 있게 된다.  
 <img src="./images/bert_mlm.png" alt="bert_mlm" width="500"/>
 
 - BERT 논문에 따르면, 입력 token 중 15% token을 예측하게되는데, 그 15%의 token을 아래 비율대로 처리한다.
@@ -72,31 +79,30 @@
   - 10%: 임의의 token으로 변경
   - 10%: 변경하지 않고 그대로 둔다. 정답을 그대로 예측하는 이유는 올바른 정답에 대해 bias를 주기 위함이다.
 
-#### fine tuning
+#### fine tuning (미세 조정)
+- fine tuning은 pre-training 과정으로 학습된 모델을 기반으로 트위터 메시지 재해 탐지를 할 수 있도록 모델에 일부 레이어를 변형/추가하고 학습하는 과정이다.
 - fine tuning을 위한 classification layer는 Convolutional Neural Networks for Sentence Classification 논문의 모델을 참고하여 적용하였다.
   - 간단한 CNN모델으로 여러 classification task에서 SOTA를 달성하였고 다양한 문장 길이에도 적용할 수 있는 장점이 있다.  
 - Convolutional Neural Networks for Sentence Classification  
   <img src="./images/cnn_sentence.png" alt="cnn_classification" width="550"/>
-  - pre-train한 모델의 top layer에 cnn classification layer를 사용한다.
-### fine tuning
+
 - BERT + CNN classifier  
   <img src="./images/bert_cnn.jpg" alt="bert_cnn_architecture" width="400"/>
+  - pre-train한 모델의 top layer에 cnn classification layer를 사용한다.
 ## Experiments / 실험 내역
 ### AI Hub dataset
 #### pre-training
 * pre-training hyper parameter를 탐색하는 과정은 자동 탐색 툴을 사용하지 않고 직접 수동으로 탐색하였다. 이 과정은 한번의 학습당 짧게는 1일, 길게는 일주일 이상이 소요되었다.
 * 총 학습을 반복한 횟수는 약 100번이며,  서버의 GPU 2대를 전부 사용하여 약 3개월이 소요되었다.
-* 최종 pre-training 모델 - learning rate scheduler 비교
+* 최종 pre-training 모델
   -
-  <img src="./images/case7.jpeg" alt="case7" width="700"/>
+  <img src="./images/aihub_pretrained.jpg" alt="aihub_pretrained" width="700"/>
 |vocab size|batch|lr|weight decay|d_model|h|ff|layers|dropout|epoch|train/acc|valid/acc|
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-|5k|128|$2*10^{-4}$|$1*10^{-6}$|1024|8|2048|6|0.1|28|0.789|0.783|
-|5k|128|$2*10^{-4}$|0|1024|8|2048|6|0|45|0.816|0.791|
-|5k|128|$1*10^{-4}$|0|1024|8|2048|6|0|15|0.731|0.726|
-  - 회색 선이 최종 pre-training모델의 그래프로 exponential decay보다 cosine annealing scheduler가 더 좋은 성능을 보였다.
-  - 적절한 learning rate에서 가장 빠른 폭으로 감소하는 exponential decay는 학습에 적합하지 않다.
-
+|5k|128|$2*10^{-4}$|0|1024|8|2048|6|0|60|0.817|0.791|
+  - 최종적으로 6일간 60 에포크를 학습하여 valid accuracy 79%를 달성하는 결과물이 학습되었다.
+  - pre-training 과정에서 찾은 모델의 총 파라미터 수는 58M으로, 논문에서 나온 BERT-base의 파라미터 수 110M에 비하면 절반정도, BERT-large의 파라미터 수 340M에 비하면 20%도 안되는 작은 규모의 모델이다.  
+    <img src="./images/bert_base_param.png" alt="bert_base_param" width="340"/>
 
 #### fine tuning
 * 데이터셋이 적어 fine tuning dataset 전체를 충분히 학습해도 30분이 걸리지 않았다. ray tune를 사용해 hyper parameter를 탐색하기 적합하다고 판단하여 ray tune을 사용하였다. 
@@ -167,10 +173,11 @@
 4. 한정된 resource를 고려하면 batch size와 model scale은 반비례한다. 이를 고려해 적절한 hyper parameter를 찾아야한다. -->
 
 ## Future Work / 향후 계획
-- fine tuning task의 데이터셋이 적은 관계로 다양한 방법을 시도해도 validation accuracy가 나아지지 않는다. data augmentation과 같은 방식으로 validation accuracy를 개선시킬 방법을 모색해야한다.
+- data augmentation 등의 방식으로 validation accuracy를 개선시킬 방법을 모색해야한다.
 - Pile 데이터셋으로 pre-training한 모델을 기반으로 fine tuning을 시도한다. AI Hub 데이터셋으로 pre-training한 모델과 다른 결과가 나올지 확인이 필요하다.
 - fine tuning 후, 성능 평가 지표를 confusion matrix로 시각화한다.
 - fine tuning된 모델로 kaggle NLP with disaster tweets 평가용 데이터셋을 예측하여 competetion에 제출한다.
+- 학습 가능한 GPU가 추가된 후, Pile 데이터셋을 1000만개로 늘리고 모델 크기를 더 확장하여 모델 pre-training을 한다. (학습하는데 2개월 이상 소요 예상)
 
 ## References / 참고 문헌
 * Entire architecture of transformer: [Attention is all you need](https://arxiv.org/abs/1706.03762)
@@ -271,6 +278,17 @@
   - transformer의 논문에서 제안하는 relu가 아닌 swish를 사용하여 학습한뒤 성능을 비교하였다.
   - 미세하지만 swish activation function이 더 좋은 성능을 보인다.
 * 이외에도 최적의 model scale을 찾기 위해 다양한 batch size, d_model, layers 값을 주는 작업도 진행하였다.
+
+* Trial 7 - learning rate scheduler 비교
+  -
+  <img src="./images/case7.jpeg" alt="case7" width="700"/>
+|vocab size|batch|lr|weight decay|d_model|h|ff|layers|dropout|epoch|train/acc|valid/acc|
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+|5k|128|$2*10^{-4}$|$1*10^{-6}$|1024|8|2048|6|0.1|28|0.789|0.783|
+|5k|128|$2*10^{-4}$|0|1024|8|2048|6|0|45|0.816|0.791|
+|5k|128|$1*10^{-4}$|0|1024|8|2048|6|0|15|0.731|0.726|
+  - 회색 선이 최종 pre-training모델의 그래프로 exponential decay보다 cosine annealing scheduler가 더 좋은 성능을 보였다.
+  - 적절한 learning rate에서 가장 빠른 폭으로 감소하는 exponential decay는 학습에 적합하지 않다.
 
 ##### fine tuning
 * Trial 2.
