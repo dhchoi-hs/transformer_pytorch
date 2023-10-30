@@ -3,11 +3,10 @@
 
 ## Introduction / 서론
 <!-- 왜 트랜스포머를 시작했고 BERT를 했는지에 대한 설명. -->
-- 첫 study 대상으로 Transformer 모델을 선택하였다.
-  - Transformer는 기존의 NLP 모델의 한계를 뛰어넘은 모델로 현재도 많은 모델이 Transformer의 인코더와 디코더를 기반으로 만들어지고있으며, 최근에는 NLP뿐만 아니라 Vision에서도 좋은 결과를 보이고있다.
-- 재해탐지 분야 관련 NLP Task로 다양한 정보가 실시간으로 올라오는 트위터 메시지를 통해 실제로 발생한 재난/재해와 연관이 있는 메시지인지 분류하는 Task를 선정했다.
-- Transformer의 encoder 기반의 BERT 모델은 문장 내 앞뒤 문맥을 모두 살필 수 있다는 양방향 성격을 가지고, decoder 기반의 GPT 모델은 문장 시작부터 순차적으로 계산하는 일방향 성격을 가지고 있다.
-- 이런 이유로 GPT는 문장 생성에 강하고 BERT는 문장의 의미를 추출해내는데 강점을 가지고 있는 모델이다.
+- Transformer는 기존의 NLP(Natural Language Processing, 자연어 처리) 모델의 한계를 뛰어넘은 모델로 현재도 많은 모델이 Transformer의 인코더와 디코더를 기반으로 만들어지고있으며, 최근에는 NLP뿐만 아니라 Vision에서도 좋은 결과를 보이고있다.
+  - Transformer의 인코더, 디코더를 응용해 많은 모델을 만들어낼 수 있기 때문에 Transformer를 연구 모델로 지정하였다.
+- Transformer를 연구하던 중, 재난/재해탐지 분야 방향으로 모델링 과업 방향을 정했고, 다양한 정보가 실시간으로 올라오는 트위터 메시지를 통해 실제로 발생한 재난/재해와 연관이 있는 메시지인지 분류하는 Task를 선정했다.
+- Transformer의 encoder 기반의 BERT 모델은 문장 내 앞뒤 문맥을 모두 살필 수 있다는 양방향 성격을 가지고, decoder 기반의 GPT 모델은 문장 시작부터 순차적으로 계산하는 일방향 성격을 가지고 있다. GPT는 문장 생성에 강하고 BERT는 문장의 의미를 추출해내는데 강점을 가지고 있는 모델이다.
 - BERT 모델이 문장을 분류하는 task에서 뛰어난 결과를 보였기 때문에 BERT 모델을 실험 모델로 선정하였다.
 - BERT 논문에 따르면 대표적으로 아래 4가지 유형에서 모델을 활용할 수 있다. 트위터 재해탐지 Task는 단일 문장 분류에 속한다.
   1. 단일 문장 분류 (Single Sentence Classification Tasks)
@@ -17,7 +16,7 @@
 
 ## Preliminaries / 선행 연구
 - Transformer
-  - 2017년 구글에서 발표한 논문 "Attention is all you need"에서 소개된 모델로 인코더-디코더 구조를 가지고있다.  
+  - 2017년 구글에서 발표한 논문 "Attention is all you need"에서 소개된 모델로 인코더-디코더 구조를 가지고있다. 인코더, 디코더를 기반으로 다양한 분야의 Task로 확장시킬 수 있다.  
   <img src="./images/transformer.jpg" alt="transformer_architecture" width="400"/>
 
   - 아래와 같은 component로 구성되어있다.
@@ -101,7 +100,7 @@
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 |5k|128|$2*10^{-4}$|0|1024|8|2048|6|0|60|0.817|0.791|
   - 최종적으로 6일간 60 에포크를 학습하여 valid accuracy 79%를 달성하는 결과물이 학습되었다.
-  - pre-training 과정에서 찾은 모델의 총 파라미터 수는 58M으로, 논문에서 나온 BERT-base의 파라미터 수 110M에 비하면 절반정도, BERT-large의 파라미터 수 340M에 비하면 20%도 안되는 작은 규모의 모델이다.  
+  - pre-training 과정에서 찾은 모델의 총 파라미터 수는 58M으로, 논문에서 나온 BERT-base의 파라미터 수 110M에 비하면 절반정도, BERT-large의 파라미터 수 340M에 비하면 20%도 안되는 작은 규모의 모델이다. 이는 현 GPU 메모리의 거의 한계에 근접한 것으로, 메모리가 2배 늘어나는 새 GPU를 사용하면 BERT-base 모델의 규모에 근접한 모델을 만들어 낼 수 있을 것이다.  
     <img src="./images/bert_base_param.png" alt="bert_base_param" width="340"/>
 
 #### fine tuning
@@ -161,9 +160,10 @@
  - torch.exp(), torch.log()를 쓰거나, 값을 나눌 경우 값이 inf(무한대) 혹은 NaN(Not a Number) 문제가 발생할 수 있음을 인지하고 구현해야 한다.
 
 ## Conclusion / 결론
-  1. fine tuning 모델을 통해 영어 트윗 메시지가 재난/재해와 연관이 있는지 없는지 판단할 수 있는 모델을 만들었다. 모델을 이용해 실시간 트윗 메시지를 통해 실시간 재난/재해를 탐지할 수도 있다. 또한 한글 데이터셋을 수집하여 모델을 학습시킨다면 영어뿐만 아니라 한글 SNS 메시지로도 재난/재해를 탐지할 수 있다.
-  2. 학습 데이터가 충분치는 않았지만, AI Hub와 Pile 데이터셋을 통해 pre-training된 BERT모델을 학습하였다. 이 모델은 tweet 메시지 분류 뿐만 아니라 다양한 목적의 NLP task에 활용될 수 있다.
-  3. 데이터 수집 및 전처리부터 fine tuning까지 일련의 NLP 학습 과정을 거침으로써, 다양한 데이터셋과 모델을 선택하여 학습할 수 있는 기반을 만들어놓았다.
+  1. GPU를 1~2개밖에 사용할 수 없는 제약 조건과 첫 모델링 연구 실험으로 인한 시행착오로 인한 시간소요가 있었다. GPU증설과 이번 연구 경험을 통해 다음 연구는 더 효율적으로 진행할 수 있을 것을 기대한다.
+  2. fine tuning 모델을 통해 트위터 메시지가 재난/재해와 연관이 있는지 없는지 판단할 수 있는 모델을 만들었다. 모델을 이용해 실시간 트윗 메시지를 통해 실시간 재난/재해를 탐지할 수도 있다. 또한 한글 데이터셋을 수집하여 모델을 학습시킨다면 영어뿐만 아니라 한글 SNS 메시지로도 재난/재해를 탐지할 수 있다.
+  3. 학습 데이터가 충분치는 않았지만, AI Hub와 Pile 데이터셋을 통해 pre-training된 BERT모델을 학습하였다. 이 모델은 tweet 메시지 분류 뿐만 아니라 다양한 목적의 NLP task에 활용될 수 있다.
+  4. 데이터 수집 및 전처리부터 fine tuning까지 일련의 NLP 학습 과정을 거침으로써, 다양한 데이터셋과 모델을 선택하여 학습할 수 있는 기반을 만들어놓았다.
 <!-- 1. 초반에 hyper parameter를 탐색할 때는 큰 단위의 step으로 구분하여 탐색하는 것이 좋다. 큰 차이 없는 hyper parameter를 비교할 때는 성능 수치상으로도 큰 차이를 안내기 때문이다. 그 후 괄목할만한 hyper parameter가 나온다면 해당 hyper parameter에서 적은 step으로 세분화하여 탐색하는 것이 효율적인 것으로 보인다.
 
 2. 데이터셋이 적다면 dropout, weight decay같은 regularization을 추가하여 train데이터 학습에 방해를 주어 overfitting하지 않도록 막아준다. 데이터셋이 충분히 많다면 regularization을 주지 않아도 충분히 좋은 성능을 뽑아낼 수 있다.
@@ -173,10 +173,10 @@
 4. 한정된 resource를 고려하면 batch size와 model scale은 반비례한다. 이를 고려해 적절한 hyper parameter를 찾아야한다. -->
 
 ## Future Work / 향후 계획
+- k-fold cross validation을 사용하여 적은 데이터셋에서 hyper-parameter를 탐색한다.
 - data augmentation 등의 방식으로 validation accuracy를 개선시킬 방법을 모색해야한다.
 - Pile 데이터셋으로 pre-training한 모델을 기반으로 fine tuning을 시도한다. AI Hub 데이터셋으로 pre-training한 모델과 다른 결과가 나올지 확인이 필요하다.
-- fine tuning 후, 성능 평가 지표를 confusion matrix로 시각화한다.
-- fine tuning된 모델로 kaggle NLP with disaster tweets 평가용 데이터셋을 예측하여 competetion에 제출한다.
+- 최종 fine tuning 후, kaggle NLP with disaster tweets 평가용 데이터셋을 예측하여 confusion matrix로 시각화하고 kaggle competetion에 제출한다.
 - 학습 가능한 GPU가 추가된 후, Pile 데이터셋을 1000만개로 늘리고 모델 크기를 더 확장하여 모델 pre-training을 한다. (학습하는데 2개월 이상 소요 예상)
 
 ## References / 참고 문헌
