@@ -14,7 +14,6 @@ from serving.bpe_for_serving.bpe_codec_char import encode_bpe_char
 torch.manual_seed(7)
 torch.cuda.manual_seed_all(7)
 catch_kill_signal()
-# torch.autograd.set_detect_anomaly(True)
 
 
 def load_model(pre_train_config, fine_tuning_config, ckpt_path, vocab_dict, device):
