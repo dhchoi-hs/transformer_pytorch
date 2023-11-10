@@ -1,16 +1,15 @@
 import os
 import glob
 import re
-import shutil
 import json
 import time
+import shutil
 from functools import partial
 from itertools import count
-from datetime import datetime
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
-from hs_aiteam_pkgs.util.logger import init_logger, get_logger
+from hs_aiteam_pkgs.util.logger import get_logger
 from hs_aiteam_pkgs.util.signal_handler import SigTermException
 from hs_aiteam_pkgs.model.lr_scheduler import create_lr_scheduler
 from dataset_loader import mlm_dataset
@@ -35,7 +34,12 @@ class PreTrainTrainer:
     def initialize_train(self):
         self.config = self._init_config()
         self.vocab = self._load_vocab()
-        self.device = get_torch_device(self.config.cuda_index)
+        if self.config.cuda_index is not None:
+            os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(self.config.cuda_index)
+            self.device = get_torch_device(0)
+        else:
+            self.device = get_torch_device(None)
 
     def _init_config(self):
         config = configuration.load_config_file(self.config_path)
@@ -113,6 +117,13 @@ class PreTrainTrainer:
         optim = self._init_optimizer(model)
         scheduler = create_lr_scheduler(optim, self.config.lr_scheduler,
                                         **self.config.lr_scheduler_kwargs)
+        # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        #     optim,
+        #     mode='min',
+        #     factor=0.2,
+        #     patience=3,
+        #     threshold=1e-2
+        # )
 
         if self.resume:
             checkpoint = load_ckpt(os.path.join(self.model_dir, 'checkpoint.pt'))
@@ -137,79 +148,97 @@ class PreTrainTrainer:
         iters = len(train_dataloader)
 
         train_interval_loss = train_interval_acc = .0
+        train_epoch_loss = train_epoch_acc = .0
         logging_interval = 20
         elapsed_train = 0
 
         if step == 0:
             tb_writer.add_scalar('learning_rate', optim.param_groups[0]["lr"], step+1)
-        for current_epoch in count(start_epoch+1) \
-                if self.config.epoch is None else range(start_epoch+1, self.config.epoch+1):
-            tb_writer.add_scalar('epoch', current_epoch, step+1)
-            for train_data in train_dataloader:
-                step += 1
-                model.train()
-                training_started = time.time()
-                train_loss, train_acc = self._train_step(train_data, model, loss_fn, optim)
-                elapsed_train += time.time() - training_started
-                train_interval_loss += train_loss
-                train_interval_acc += train_acc
+        try:
+            for current_epoch in count(start_epoch+1) \
+                    if self.config.epoch is None else range(start_epoch+1, self.config.epoch+1):
+                tb_writer.add_scalar('epoch', current_epoch, step+1)
+                train_epoch_loss = train_epoch_acc = .0
+                for train_data in train_dataloader:
+                    step += 1
+                    model.train()
+                    training_started = time.time()
+                    metrics = self._train_step(train_data, model, loss_fn, optim)
+                    elapsed_train += time.time() - training_started
+                    train_interval_loss += metrics['loss']
+                    train_interval_acc += metrics['acc']
+                    train_epoch_loss += metrics['loss']
+                    train_epoch_acc += metrics['acc']
 
-                # change lr.
-                if scheduler:
-                    scheduler.step(step / iters)
+                    # change lr.
+                    if scheduler:
+                        scheduler.step(step / iters)
 
-                # logging per 20 steps.
-                if step % logging_interval == 0:
-                    iterval_loss = train_interval_loss / logging_interval
-                    interval_acc = train_interval_acc / logging_interval
-                    get_logger().info(
-                        '%d/%d training loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
-                        current_epoch, step, round(iterval_loss, 4),
-                        round(interval_acc, 4), round(elapsed_train,2))
-                    tb_writer.add_scalar('elapsed/train', elapsed_train, step)
-                    tb_writer.add_scalar('Loss/train', iterval_loss, step)
-                    tb_writer.add_scalar('Acc/train', interval_acc, step)
-                    tb_writer.add_scalar('learning_rate', optim.param_groups[0]["lr"], step)
-                    elapsed_train = 0
-                    train_interval_loss = .0
-                    train_interval_acc = .0
-
-                # save checkpoint and validate.
-                if step > 1 and step % self.config.step_save_ckpt == 0:
-                    save_checkpoint(origin_model, os.path.join(self.model_dir, 'checkpoint.pt'),
-                                    step, current_epoch, optim, scheduler)
-                    model_files = save_model(origin_model, self.model_dir, model_files,
-                                            self.config.keep_last_models, step)
-                    get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
-
-                    if valid_dataloader is not None:
-                        get_logger().info('%d/%d Start to validation', current_epoch, step)
-                        model.eval()
-                        valid_started = time.time()
-                        with torch.no_grad():
-                            val_loss, val_acc = self._valid_epoch(
-                                valid_dataloader, model, loss_fn)
-                        elapsed_valid = time.time() - valid_started
-                        tb_writer.add_scalar('elapsed/valid', elapsed_valid, step)
-                        tb_writer.add_scalar('Loss/valid', val_loss, step)
-                        tb_writer.add_scalar('Acc/valid', val_acc, step)
+                    # logging per 20 steps.
+                    if step % logging_interval == 0:
+                        iterval_loss = train_interval_loss / logging_interval
+                        interval_acc = train_interval_acc / logging_interval
                         get_logger().info(
-                            '%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
-                            current_epoch, step, round(val_loss, 4), round(val_acc, 4),
-                            round(elapsed_valid, 2))
+                            '%d/%d training loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
+                            current_epoch, step, round(iterval_loss, 4),
+                            round(interval_acc, 4), round(elapsed_train,2))
+                        tb_writer.add_scalar('elapsed/train', elapsed_train, step)
+                        tb_writer.add_scalar('Loss/train', iterval_loss, step)
+                        tb_writer.add_scalar('Acc/train', interval_acc, step)
+                        tb_writer.add_scalar('learning_rate', optim.param_groups[0]["lr"], step)
+                        elapsed_train = 0
+                        train_interval_loss = .0
+                        train_interval_acc = .0
 
-                        if train_dataloader is None:
-                            break
+                    # save checkpoint and validate.
+                    if step > 1 and step % self.config.step_save_ckpt == 0:
+                        save_checkpoint(origin_model, os.path.join(self.model_dir, 'checkpoint.pt'),
+                                        step, current_epoch, optim, scheduler)
+                        model_files = save_model(origin_model, self.model_dir, model_files,
+                                                self.config.keep_last_models, step)
+                        get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
 
-            tb_writer.add_scalar('epoch', current_epoch, step)
-            get_logger().info('%s/%s Training a epoch finished.', current_epoch, step)
+                        if valid_dataloader is not None:
+                            get_logger().info('%d/%d Start to validation', current_epoch, step)
+                            model.eval()
+                            valid_started = time.time()
+                            with torch.no_grad():
+                                metrics = self._valid_epoch(
+                                    valid_dataloader, model, loss_fn)
+                            elapsed_valid = time.time() - valid_started
+                            tb_writer.add_scalar('elapsed/valid', elapsed_valid, step)
+                            tb_writer.add_scalar('Loss/valid', metrics['loss'], step)
+                            tb_writer.add_scalar('Acc/valid', metrics['acc'], step)
+                            get_logger().info(
+                                '%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
+                                current_epoch, step, round(metrics['loss'], 4), round(metrics['acc'], 4),
+                                round(elapsed_valid, 2))
 
-        save_checkpoint(origin_model, os.path.join(self.model_dir, 'checkpoint.pt'),
-                        step, current_epoch, optim, scheduler)
+                            if train_dataloader is None:
+                                break
+
+                # if scheduler:
+                #     scheduler.step(metrics=train_epoch_loss/iters)
+                tb_writer.add_scalar('epoch', current_epoch, step)
+                get_logger().info('%s/%s Training a epoch finished.', current_epoch, step)
+        except KeyboardInterrupt:
+            get_logger().info('Training stopped by Ctrl+C.')
+        except SigTermException:
+            get_logger().info('Training stopped by sigterm.')
+        except torch.cuda.OutOfMemoryError as oom_exception:
+            get_logger().error('CUDA out of memory. :%s', oom_exception)
+        except Exception as exception:
+            get_logger().error('Exception occured during training. %s', exception)
+        else:
+            get_logger().info("All training finished.")
+        finally:
+            save_checkpoint(origin_model, os.path.join(self.model_dir, 'checkpoint.pt'),
+                            step, current_epoch, optim, scheduler)
 
     def _load_vocab(self):
         with open(self.config.vocab_file, 'rt', encoding='utf8') as f:
             vocab = json.load(f)
+        shutil.copy(self.config.vocab_file, self.model_dir)
         return vocab
 
     def fit(self):

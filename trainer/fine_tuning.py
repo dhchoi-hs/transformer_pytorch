@@ -1,22 +1,16 @@
-import sys
 import os
 import glob
-import re
-import argparse
-import shutil
 import json
 import time
+import shutil
 from functools import partial
 from itertools import count
-from datetime import datetime
 import torch
 from torch.utils.tensorboard import SummaryWriter
-from torch.utils.data import DataLoader, Subset
-from hs_aiteam_pkgs.util.logger import init_logger, get_logger
-from hs_aiteam_pkgs.util.signal_handler import SigTermException, catch_kill_signal
+from torch.utils.data import DataLoader
+from hs_aiteam_pkgs.util.logger import get_logger
 from hs_aiteam_pkgs.model.lr_scheduler import create_lr_scheduler
 from dataset_loader import tweet_disaster_dataset
-from model.utils.get_torch_device import get_torch_device
 import configuration
 import configuration_fine_tuning
 from checkpoint import load_ckpt, save_checkpoint, save_model
@@ -42,6 +36,7 @@ class FineTuningTrainer(PreTrainTrainer):
     def _init_pre_train_config(self):
         config = configuration.load_config_file(self.pre_train_config_file)
         configuration.validate_config(config)
+        shutil.copy(self.pre_train_config_file, self.model_dir)
         return config
 
     def initialize_train(self):
@@ -131,8 +126,8 @@ class FineTuningTrainer(PreTrainTrainer):
 
         iters = len(train_dataloader)
 
-        train_interval_loss = train_interval_acc = .0
-        train_epoch_loss = train_epoch_acc = .0
+        train_interval_loss = train_interval_acc = train_interval_f1 = .0
+        train_epoch_loss = train_epoch_acc = train_epoch_f1 = .0
         logging_interval = 20
         elapsed_train = 0
 
@@ -145,12 +140,14 @@ class FineTuningTrainer(PreTrainTrainer):
                 step += 1
                 model.train()
                 training_started = time.time()
-                train_loss, train_acc = self._train_step(train_data, model, loss_fn, optim)
+                metrics = self._train_step(train_data, model, loss_fn, optim)
                 elapsed_train += time.time() - training_started
-                train_interval_loss += train_loss
-                train_interval_acc += train_acc
-                train_epoch_loss += train_loss
-                train_epoch_acc += train_acc
+                train_interval_loss += metrics['loss']
+                train_interval_acc += metrics['acc']
+                train_interval_f1 += metrics['f1']
+                train_epoch_loss += metrics['loss']
+                train_epoch_acc += metrics['acc']
+                train_epoch_f1 += metrics['f1']
 
                 # change lr.
                 if scheduler:
@@ -158,25 +155,26 @@ class FineTuningTrainer(PreTrainTrainer):
 
                 # logging per 20 steps.
                 if step % logging_interval == 0:
-                    iterval_loss = train_interval_loss / logging_interval
+                    interval_loss = train_interval_loss / logging_interval
                     interval_acc = train_interval_acc / logging_interval
+                    interval_f1 = train_interval_f1 / logging_interval
                     get_logger().info(
-                        '%d/%d training loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
-                        current_epoch, step, round(iterval_loss, 4),
-                        round(interval_acc, 4), round(elapsed_train,2))
+                        '%d/%d training loss: %7.4f, acc: %7.4f, f1: %7.4f, elapsed: %.2fs',
+                        current_epoch, step, round(interval_loss, 4),
+                        round(interval_acc, 4), round(interval_f1, 4), round(elapsed_train,2))
                     tb_writer.add_scalar('elapsed/train', elapsed_train, step)
                     tb_writer.add_scalar('learning_rate', optim.param_groups[0]["lr"], step)
                     elapsed_train = 0
                     train_interval_loss = .0
                     train_interval_acc = .0
+                    train_interval_f1 = .0
             tb_writer.add_scalar('Loss/train', train_epoch_loss/len(train_dataloader), step)
             tb_writer.add_scalar('Acc/train', train_epoch_acc/len(train_dataloader), step)
-            train_epoch_loss = train_epoch_acc = .0
+            tb_writer.add_scalar('F1/train', train_epoch_f1/len(train_dataloader), step)
+            train_epoch_loss = train_epoch_acc = train_epoch_f1 = .0
 
             # save checkpoint and validate.
             if step > 1:
-                save_checkpoint(origin_model, os.path.join(self.model_dir, 'checkpoint.pt'),
-                                step, current_epoch, optim, scheduler)
                 model_files = save_model(origin_model, self.model_dir, model_files,
                                         self.config.keep_last_models, step)
                 get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
@@ -186,16 +184,17 @@ class FineTuningTrainer(PreTrainTrainer):
                     model.eval()
                     valid_started = time.time()
                     with torch.no_grad():
-                        val_loss, val_acc = self._valid_epoch(
+                        metrics = self._valid_epoch(
                             valid_dataloader, model, loss_fn)
                     elapsed_valid = time.time() - valid_started
                     tb_writer.add_scalar('elapsed/valid', elapsed_valid, step)
-                    tb_writer.add_scalar('Loss/valid', val_loss, step)
-                    tb_writer.add_scalar('Acc/valid', val_acc, step)
+                    tb_writer.add_scalar('Loss/valid', metrics['loss'], step)
+                    tb_writer.add_scalar('Acc/valid', metrics['acc'], step)
+                    tb_writer.add_scalar('F1/valid', metrics['f1'], step)
                     get_logger().info(
-                        '%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
-                        current_epoch, step, round(val_loss, 4), round(val_acc, 4),
-                        round(elapsed_valid, 2))
+                        '%d/%d validation finished. loss: %7.4f, acc: %7.4f, f1: %7.4f, elapsed: %.2fs',
+                        current_epoch, step, round(metrics['loss'], 4), round(metrics['acc'], 4),
+                        round(metrics['f1'], 4), round(elapsed_valid, 2))
 
                     if train_dataloader is None:
                         break

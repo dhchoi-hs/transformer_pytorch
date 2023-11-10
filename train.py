@@ -21,6 +21,8 @@ def _init_model_dir(model_dir, train_type, resume, config_path):
         _model_dir = f'output/model_{train_type}_{datetime.now().strftime("%Y%m%d%H%M%S")}'
     elif resume and not model_dir:
         raise ValueError('No model_dir arg for resume.')
+    else:
+        _model_dir = model_dir
 
     if os.path.exists(_model_dir):
         if not resume:
@@ -36,13 +38,13 @@ def _init_model_dir(model_dir, train_type, resume, config_path):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('-c', '--pre_trained_config', type=str, default='configs/config_ln_encoder.yaml')
-    ap.add_argument('-p', '--pre_trained_model', type=str, required=True)
+    ap.add_argument('-p', '--pre_trained_model', type=str)
     ap.add_argument('-f', '--fine_tuning_config', type=str, default='config/config_fine_tuning.yaml')
     ap.add_argument('-d', '--model_dir', type=str, default='')
     ap.add_argument('-r', '--resume', default=False, action='store_true')
     ap.add_argument('-m', '--memo', type=str, default='')
     ap.add_argument('-t', '--train_type', type=str,
-                    choices=['pre-train', 'fine-tuning', 'fine-tuning-cross-validation'],
+                    choices=['pre-train', 'fine-tuning', 'fine-tuning-cv'],
                     default='pre-train')
 
     args = ap.parse_args()
@@ -56,7 +58,7 @@ if __name__ == '__main__':
 
     if args.train_type == 'pre-train':
         _model_dir = _init_model_dir(model_dir, args.train_type, resume, pre_train_config_file)
-    elif args.train_type in ('fine-tuning', 'fine-tuning-cross-validation'):
+    elif args.train_type in ('fine-tuning', 'fine-tuning-cv'):
         _model_dir = _init_model_dir(model_dir, args.train_type, resume, fine_tuning_config)
     else:
         _model_dir = _init_model_dir(model_dir, args.train_type, resume, pre_train_config_file)
@@ -77,7 +79,7 @@ if __name__ == '__main__':
             _model_dir,
             resume,
             memo)
-    elif args.train_type == 'fine-tuning-cross-validation':
+    elif args.train_type == 'fine-tuning-cv':
         trainer = FineTuningCrossValidationTrainer(
             fine_tuning_config,
             pre_trained_model,

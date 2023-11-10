@@ -29,9 +29,14 @@ class TweetDisasterClassifierBase(nn.Module):
         origin_model = lm_encoder(
             _config.d_model, _config.h, _config.ff, _config.n_layers,
             len(vocab), padding_idx=padding_idx, activation='gelu')
-        model = torch.compile(origin_model)
 
         loaded_model = load_ckpt(model_file)
+
+        # compile model if model state dict of ckpt was compiled.
+        if next(iter(loaded_model.keys())).startswith('_orig_mod.'):
+            model = torch.compile(origin_model)
+        else:
+            model = origin_model
         model.load_state_dict(loaded_model)
 
         return origin_model
