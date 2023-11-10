@@ -49,9 +49,6 @@ def main(_config_file, _model_dir, _resume, memo):
         get_logger().error('No model_dir arg for resume.')
         sys.exit()
 
-    with open(config.vocab_file, 'rt') as f:
-        vocab = json.load(f)
-
     if os.path.exists(_model_dir):
         if not _resume:
             get_logger().error('model directory (%s) already exists.', _model_dir)
@@ -63,6 +60,9 @@ def main(_config_file, _model_dir, _resume, memo):
         else:
             os.makedirs(_model_dir, exist_ok=True)
             shutil.copy(_config_file, _model_dir)
+
+    with open(config.vocab_file, 'rt') as f:
+        vocab = json.load(f)
 
     init_logger(os.path.join(_model_dir, 'log.log' if not _resume else 'log_resume.log'))
     get_logger().info('Training started.')
@@ -181,10 +181,9 @@ def main(_config_file, _model_dir, _resume, memo):
             f'steps per epoch: {len(valid_dataloader)}'
     get_logger().info('Dataset loaded. %s', datasets)
 
-    purge_step = None if not resume else step
+    purge_step = None if not _resume else step
     sw = SummaryWriter(_model_dir, purge_step=purge_step)
 
-    sleep_between_step = .0
     train_loss = train_acc = val_loss = val_acc = .0
     train_interval_loss = train_interval_acc = .0
     logging_interval = 20
@@ -240,7 +239,7 @@ def main(_config_file, _model_dir, _resume, memo):
                         with torch.no_grad():
                             val_loss, val_acc = run_epoch(
                                 valid_dataloader, model,loss_fn, None, False,
-                                sleep_between_step, device)
+                                device)
                         elapsed_valid = time.time() - valid_started
                         sw.add_scalar('elapsed/valid', elapsed_valid, step)
                         sw.add_scalar('Loss/valid', val_loss, step)

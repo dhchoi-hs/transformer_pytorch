@@ -4,7 +4,7 @@ from hs_aiteam_pkgs.util.logger import get_logger
 
 
 def load_ckpt(ckpt_path):
-    checkpoint = torch.load(ckpt_path)
+    checkpoint = torch.load(ckpt_path, map_location='cpu')
 
     return checkpoint
 

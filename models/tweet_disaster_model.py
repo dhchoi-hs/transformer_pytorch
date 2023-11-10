@@ -29,9 +29,14 @@ class TweetDisasterClassifierBase(nn.Module):
         origin_model = lm_encoder(
             _config.d_model, _config.h, _config.ff, _config.n_layers,
             len(vocab), padding_idx=padding_idx, activation='gelu')
-        model = torch.compile(origin_model)
 
         loaded_model = load_ckpt(model_file)
+
+        # compile model if model state dict of ckpt was compiled.
+        if next(iter(loaded_model.keys())).startswith('_orig_mod.'):
+            model = torch.compile(origin_model)
+        else:
+            model = origin_model
         model.load_state_dict(loaded_model)
 
         return origin_model
@@ -106,19 +111,20 @@ class TweetDisasterClassifierCNN(TweetDisasterClassifierBase):
         _x = self.pretrained_model(x, mask)
         outputs = []
         for input_sentence, sentence in zip(x, _x):
+            # remove PAD tokens not needed for cnn.
             sentence_without_padding = sentence[input_sentence != self.pretrained_model.padding_idx]
+            # sentence length must not be less than kernel size.
             if sentence_without_padding.size(0) < self.max_kernel_size:
                 sentence_without_padding = F.pad(
                     sentence_without_padding,
                     (0, 0, 0, self.max_kernel_size - sentence_without_padding.size(0)))
             sentence_without_padding = sentence_without_padding.transpose(-1, -2)
-            conved_list = [cnn(sentence_without_padding)
-                           for cnn in self.cnns]
+            conved_list = [cnn(sentence_without_padding) for cnn in self.cnns]
             outputs.append(torch.cat(
                 [self.cnn_activation_function(F.max_pool1d(conved, conved.size(-1))).
                  transpose(-1, -2).squeeze(-2) for conved in conved_list]))
 
-        return self.fc(self.dropout(torch.stack(outputs))).sigmoid().squeeze(-1)
+        return self.fc(self.dropout(torch.stack(outputs))).sigmoid()
 
 
 if __name__ == '__main__':
