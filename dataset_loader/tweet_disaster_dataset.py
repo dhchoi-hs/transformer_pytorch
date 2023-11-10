@@ -1,7 +1,9 @@
 import random
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from hs_aiteam_pkgs.util.logger import get_logger
+from dataset_loader.mlm_dataset import round_int
+from collections import defaultdict
 
 random.seed(7)
 
@@ -28,6 +30,52 @@ def worker_init(worker_id):
     random.seed(7)
 
     return
+
+
+class KFold:
+    def __init__(self, k, dataset, shuffle) -> None:
+        self.k = k
+        self.split_train, self.split_valid = self._k_fold_split_dataset(dataset, shuffle)
+    
+    def _k_fold_split_dataset(self, dataset, shuffle):
+        label_indices = defaultdict(list)
+
+        for index, data in enumerate(dataset):
+            label_indices[data[1][0]].append(index)
+
+        if shuffle:
+            for indices in label_indices.values():
+                random.shuffle(indices)
+        split_indices = defaultdict(list)
+        for split in range(self.k):
+            for label, indices in label_indices.items():
+                split_indices[label].append(indices[round_int(len(indices)*split/self.k):round_int(len(indices)*(split+1)/self.k)])
+
+        assert sum([sum(map(len, i)) for i in split_indices.values()]) == len(dataset), 'length different'
+
+        splitted_train = []
+        splitted_valid = []
+        for split in range(self.k):
+            train_indices = []
+            valid_indices = []
+            for indices in split_indices.values():
+                trains = []
+                trains.extend(indices[:split])
+                trains.extend(indices[split+1:])
+                for train in trains:
+                    train_indices.extend(train)
+                valid_indices.extend(indices[split])
+            splitted_train.append(train_indices if shuffle else sorted(train_indices))
+            splitted_valid.append(valid_indices if shuffle else sorted(valid_indices))
+
+        return splitted_train, splitted_valid
+
+    def __iter__(self, ):
+        for st, sv in zip(self.split_train, self.split_valid):
+            yield st, sv
+    
+    def __getitem__(self, i):
+        return self.split_train[i], self.split_valid[i]
 
 
 class TweetDisasterDataset(Dataset):
