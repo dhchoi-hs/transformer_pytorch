@@ -1,3 +1,8 @@
+# mlflow setup
+tracking_uri: http://127.0.0.1:5000
+experiment_name: BERT
+run_name: vocab10k
+
 # general
 cuda_index: 0
 epoch: null

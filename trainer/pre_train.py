@@ -8,6 +8,7 @@ from functools import partial
 from itertools import count
 import torch
 from torch.utils.tensorboard import SummaryWriter
+import mlflow
 from torch.utils.data import DataLoader
 from hs_aiteam_pkgs.util.logger import get_logger
 from hs_aiteam_pkgs.util.signal_handler import SigTermException
@@ -32,6 +33,7 @@ class PreTrainTrainer:
         self.device = None
 
     def initialize_train(self):
+        self._init_mlflow()
         self.config = self._init_config()
         self.vocab = self._load_vocab()
         if self.config.cuda_index is not None:
@@ -40,6 +42,17 @@ class PreTrainTrainer:
             self.device = get_torch_device(0)
         else:
             self.device = get_torch_device(None)
+
+    def _init_mlflow(self):
+        client = mlflow.MlflowClient(tracking_uri=self.config.tracking_uri)
+        try:
+            client.create_experiment(self.config.experiment_name)
+        except mlflow.exceptions.RestException:
+            pass
+        finally:
+            del client
+        mlflow.set_tracking_uri(self.config.tracking_uri)
+        mlflow.set_experiment(self.config.experiment_name)
 
     def _init_config(self):
         config = configuration.load_config_file(self.config_path)
@@ -120,8 +133,8 @@ class PreTrainTrainer:
         # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         #     optim,
         #     mode='min',
-        #     factor=0.2,
-        #     patience=3,
+        #     factor=0.1,
+        #     patience=2,
         #     threshold=1e-2
         # )
 
@@ -151,13 +164,16 @@ class PreTrainTrainer:
         train_epoch_loss = train_epoch_acc = .0
         logging_interval = 20
         elapsed_train = 0
+        best_val_acc = 0
 
         if step == 0:
             tb_writer.add_scalar('learning_rate', optim.param_groups[0]["lr"], step+1)
+            mlflow.log_metric('learning_rate', optim.param_groups[0]["lr"], step+1)
         try:
             for current_epoch in count(start_epoch+1) \
                     if self.config.epoch is None else range(start_epoch+1, self.config.epoch+1):
                 tb_writer.add_scalar('epoch', current_epoch, step+1)
+                mlflow.log_metric('epoch', current_epoch, step+1)
                 train_epoch_loss = train_epoch_acc = .0
                 for train_data in train_dataloader:
                     step += 1
@@ -186,40 +202,63 @@ class PreTrainTrainer:
                         tb_writer.add_scalar('Loss/train', iterval_loss, step)
                         tb_writer.add_scalar('Acc/train', interval_acc, step)
                         tb_writer.add_scalar('learning_rate', optim.param_groups[0]["lr"], step)
+                        mlflow.log_metrics(
+                            {
+                                'elapsed/train': elapsed_train,
+                                'Loss/train': iterval_loss,
+                                'Acc/train': interval_acc,
+                                'learning_rate': optim.param_groups[0]["lr"],
+                            },
+                            step
+                        )
                         elapsed_train = 0
                         train_interval_loss = .0
                         train_interval_acc = .0
 
                     # save checkpoint and validate.
-                    if step > 1 and step % self.config.step_save_ckpt == 0:
-                        save_checkpoint(origin_model, os.path.join(self.model_dir, 'checkpoint.pt'),
-                                        step, current_epoch, optim, scheduler)
-                        model_files = save_model(origin_model, self.model_dir, model_files,
-                                                self.config.keep_last_models, step)
-                        get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
+                if step > 1:
+                    save_checkpoint(origin_model, os.path.join(self.model_dir, 'checkpoint.pt'),
+                                    step, current_epoch, optim, scheduler)
+                    model_files = save_model(origin_model, self.model_dir, model_files,
+                                            self.config.keep_last_models, step)
+                    get_logger().info('checkpoint saved at %d/%d', current_epoch, step)
 
-                        if valid_dataloader is not None:
-                            get_logger().info('%d/%d Start to validation', current_epoch, step)
-                            model.eval()
-                            valid_started = time.time()
-                            with torch.no_grad():
-                                metrics = self._valid_epoch(
-                                    valid_dataloader, model, loss_fn)
-                            elapsed_valid = time.time() - valid_started
-                            tb_writer.add_scalar('elapsed/valid', elapsed_valid, step)
-                            tb_writer.add_scalar('Loss/valid', metrics['loss'], step)
-                            tb_writer.add_scalar('Acc/valid', metrics['acc'], step)
-                            get_logger().info(
-                                '%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
-                                current_epoch, step, round(metrics['loss'], 4), round(metrics['acc'], 4),
-                                round(elapsed_valid, 2))
+                if valid_dataloader is not None:
+                    get_logger().info('%d/%d Start to validation', current_epoch, step)
+                    model.eval()
+                    valid_started = time.time()
+                    with torch.no_grad():
+                        metrics = self._valid_epoch(
+                            valid_dataloader, model, loss_fn)
+                    elapsed_valid = time.time() - valid_started
+                    tb_writer.add_scalar('elapsed/valid', elapsed_valid, step)
+                    tb_writer.add_scalar('Loss/valid', metrics['loss'], step)
+                    tb_writer.add_scalar('Acc/valid', metrics['acc'], step)
+                    mlflow.log_metrics(
+                        {
+                            'elapsed/valid': elapsed_valid,
+                            'Loss/valid': metrics['loss'],
+                            'Acc/valid': metrics['acc'],
+                            'learning_rate': optim.param_groups[0]["lr"],
+                        },
+                        step
+                    )
+                    get_logger().info(
+                        '%d/%d validation finished. loss: %7.4f, acc: %7.4f, elapsed: %.2fs',
+                        current_epoch, step, round(metrics['loss'], 4), round(metrics['acc'], 4),
+                        round(elapsed_valid, 2))
+                    if best_val_acc < metrics['acc']:
+                        best_val_acc = metrics['acc']
+                        mlflow.pytorch.log_model(pytorch_model=origin_model, artifact_path='best_val_acc_model')
+                        get_logger().info('best acc %f model is saved.', best_val_acc)
 
-                            if train_dataloader is None:
-                                break
+                    if train_dataloader is None:
+                        break
 
                 # if scheduler:
                 #     scheduler.step(metrics=train_epoch_loss/iters)
                 tb_writer.add_scalar('epoch', current_epoch, step)
+                mlflow.log_metric('epoch', current_epoch, step)
                 get_logger().info('%s/%s Training a epoch finished.', current_epoch, step)
         except KeyboardInterrupt:
             get_logger().info('Training stopped by Ctrl+C.')
@@ -294,7 +333,9 @@ class PreTrainTrainer:
         get_logger().info('Dataset loaded. %s', datasets)
 
         try:
-            self._train_loop(model, origin_model, train_dataloader, valid_dataloader)
+            with mlflow.start_run(run_name=self.config.run_name):
+                mlflow.log_params(configuration.convert_to_dict(self.config))
+                self._train_loop(model, origin_model, train_dataloader, valid_dataloader)
         except KeyboardInterrupt:
             get_logger().info('Training stopped by Ctrl+C.')
         except SigTermException:

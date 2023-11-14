@@ -5,6 +5,9 @@ import yaml
 
 @dataclass()
 class ConfigData:
+    tracking_uri: str
+    experiment_name: str
+    run_name: str
     keep_last_models: int
     step_save_ckpt: int
     cuda_index: Union[int, None]
