@@ -212,14 +212,12 @@ def preprocess_text(text):
     rep = dict((re.escape(k), v) for k, v in CHAR_FILTER.items())
     pat1 = re.compile('|'.join(rep.keys()))
     pat2 = re.compile(r'https?://[\w-]+\.[\w-]+\S*')
-    pat3 = re.compile(r'\B@\w+')  # remove mention.
-    pat4 = re.compile('[ ]{2,}')
+    pat3 = re.compile('[ ]{2,}')
 
     text = html.unescape(text)
     text = text.lower()
     text = pat1.sub(lambda m: rep[re.escape(m.group(0))], text.strip())
     text = pat2.sub('', text)
     text = pat3.sub('', text)
-    text = pat4.sub(' ', text)
 
     return text.split()

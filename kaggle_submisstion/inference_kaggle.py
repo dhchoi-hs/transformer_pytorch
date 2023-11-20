@@ -63,12 +63,12 @@ def main(pre_train_config_file, fine_tuning_config_file, model_file):
 
     # PREPROCESSING & INFERENCE
     results = {}
-    # white_space = re.compile('%20')
+    white_space = re.compile('%20')
     with torch.no_grad():
         for row in dataset_rows:
             _id, keyword, location, text = row
-            # if keyword:
-            #     text = f'({white_space.sub(" ", keyword)}) {text}'
+            if keyword:
+                text = f'({white_space.sub(" ", keyword)}) {text}'
 
             tokens = encode_bpe_char(vocab, preprocess_text, text)
             tokens = torch.tensor(tokens, dtype=torch.long, device=device)
