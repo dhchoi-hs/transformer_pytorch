@@ -1,6 +1,6 @@
 # mlflow setup
 tracking_uri: http://127.0.0.1:5000
-experiment_name: BERT
+experiment_name: BERT_pretrain
 run_name: vocab10k
 
 # general

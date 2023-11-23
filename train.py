@@ -37,9 +37,9 @@ def _init_model_dir(model_dir, train_type, resume, config_path):
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('-c', '--pre_trained_config', type=str, default='configs/config_ln_encoder.yaml')
+    ap.add_argument('-c', '--pre_trained_config', type=str)
     ap.add_argument('-p', '--pre_trained_model', type=str)
-    ap.add_argument('-f', '--fine_tuning_config', type=str, default='config/config_fine_tuning.yaml')
+    ap.add_argument('-f', '--fine_tuning_config', type=str)
     ap.add_argument('-d', '--model_dir', type=str, default='')
     ap.add_argument('-r', '--resume', default=False, action='store_true')
     ap.add_argument('-m', '--memo', type=str, default='')

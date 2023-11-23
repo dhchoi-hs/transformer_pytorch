@@ -8,6 +8,7 @@ from copy import deepcopy
 import torch
 from torch.utils.data import DataLoader, Subset
 from torch.utils.tensorboard import SummaryWriter
+import mlflow
 from hs_aiteam_pkgs.util.logger import get_logger
 from hs_aiteam_pkgs.model.lr_scheduler import create_lr_scheduler
 from dataset_loader import tweet_disaster_dataset
@@ -111,6 +112,7 @@ class FineTuningCrossValidationTrainer(FineTuningTrainer):
 
             if k == 0 and step == 0:
                 tb_writer.add_scalar('learning_rate', optim.param_groups[0]["lr"], step+1)
+                mlflow.log_metric('learning_rate', optim.param_groups[0]["lr"], step+1)
             for current_epoch in count(start_epoch+1) \
                     if self.config.epoch is None else range(start_epoch+1, self.config.epoch+1):
                 train_epoch_loss = 0
@@ -145,6 +147,13 @@ class FineTuningCrossValidationTrainer(FineTuningTrainer):
                         if k == 0:
                             tb_writer.add_scalar('elapsed/train', elapsed_train, step)
                             tb_writer.add_scalar('learning_rate', optim.param_groups[0]["lr"], step)
+                            mlflow.log_metrics(
+                                {
+                                    'elapsed/train': elapsed_train,
+                                    'learning_rate': optim.param_groups[0]["lr"],
+                                },
+                                step
+                            )
                         elapsed_train = 0
                         train_interval_loss = .0
                         train_interval_acc = .0
@@ -170,6 +179,7 @@ class FineTuningCrossValidationTrainer(FineTuningTrainer):
                         elapsed_valid = time.time() - valid_started
                         if k == 0:
                             tb_writer.add_scalar('elapsed/valid', elapsed_valid, step)
+                            mlflow.log_metric('elapsed/valid', elapsed_valid, step)
                         fold_valid_loss[k].append(metrics['loss'])
                         fold_valid_acc[k].append(metrics['acc'])
                         fold_valid_f1[k].append(metrics['f1'])
@@ -222,3 +232,14 @@ class FineTuningCrossValidationTrainer(FineTuningTrainer):
             writer.add_scalar('K-fold average Loss/valid', avg_valid_loss/self.n_fold, i+1)
             writer.add_scalar('K-fold average Acc/valid', avg_valid_acc/self.n_fold, i+1)
             writer.add_scalar('K-fold average F1/valid', avg_valid_f1/self.n_fold, i+1)
+            mlflow.log_metrics(
+                {
+                    'K-fold average Loss/train': avg_train_loss/self.n_fold,
+                    'K-fold average Acc/train': avg_train_acc/self.n_fold,
+                    'K-fold average F1/train': avg_train_f1/self.n_fold,
+                    'K-fold average Loss/valid': avg_valid_loss/self.n_fold,
+                    'K-fold average Acc/valid': avg_valid_acc/self.n_fold,
+                    'K-fold average F1/valid': avg_valid_f1/self.n_fold,
+                },
+                i+1
+            )

@@ -33,7 +33,6 @@ class PreTrainTrainer:
         self.device = None
 
     def initialize_train(self):
-        self._init_mlflow()
         self.config = self._init_config()
         self.vocab = self._load_vocab()
         if self.config.cuda_index is not None:
@@ -42,15 +41,9 @@ class PreTrainTrainer:
             self.device = get_torch_device(0)
         else:
             self.device = get_torch_device(None)
+        self._init_mlflow()
 
     def _init_mlflow(self):
-        client = mlflow.MlflowClient(tracking_uri=self.config.tracking_uri)
-        try:
-            client.create_experiment(self.config.experiment_name)
-        except mlflow.exceptions.RestException:
-            pass
-        finally:
-            del client
         mlflow.set_tracking_uri(self.config.tracking_uri)
         mlflow.set_experiment(self.config.experiment_name)
 
@@ -238,8 +231,7 @@ class PreTrainTrainer:
                         {
                             'elapsed/valid': elapsed_valid,
                             'Loss/valid': metrics['loss'],
-                            'Acc/valid': metrics['acc'],
-                            'learning_rate': optim.param_groups[0]["lr"],
+                            'Acc/valid': metrics['acc']
                         },
                         step
                     )

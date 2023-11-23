@@ -8,6 +8,7 @@ from itertools import count
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
+import mlflow
 from hs_aiteam_pkgs.util.logger import get_logger
 from hs_aiteam_pkgs.model.lr_scheduler import create_lr_scheduler
 from dataset_loader import tweet_disaster_dataset
@@ -44,6 +45,13 @@ class FineTuningTrainer(PreTrainTrainer):
         return super().initialize_train()
 
     def _load_model(self):
+        # pretrained_model = mlflow.pytorch.load_model(
+        #     'mlflow-artifacts:/514742599386093848/f73e2405fbe84386be38c90d4390d297/artifacts/best_val_acc_model')
+
+        # model = TweetDisasterClassifierCNN(pretrained_model,
+        #     self.config.unfreeze_last_layers, self.config.remove_last_layers,
+        #     self.config.conv_filters, kernel_sizes=self.config.kernel_sizes,
+        #     dropout_p=self.config.p_dropout)
         model = TweetDisasterClassifierCNN.from_pretrained(
             self.pre_train_model_file, self.pre_train_config, self.config.unfreeze_last_layers,
             self.config.remove_last_layers, self.config.conv_filters,
@@ -128,14 +136,17 @@ class FineTuningTrainer(PreTrainTrainer):
 
         train_interval_loss = train_interval_acc = train_interval_f1 = .0
         train_epoch_loss = train_epoch_acc = train_epoch_f1 = .0
+        best_val_acc = best_val_f1 = 0
         logging_interval = 20
         elapsed_train = 0
 
         if step == 0:
             tb_writer.add_scalar('learning_rate', optim.param_groups[0]["lr"], step+1)
+            mlflow.log_metric('learning_rate', optim.param_groups[0]["lr"], step+1)
         for current_epoch in count(start_epoch+1) \
                 if self.config.epoch is None else range(start_epoch+1, self.config.epoch+1):
             tb_writer.add_scalar('epoch', current_epoch, step+1)
+            mlflow.log_metric('epoch', current_epoch, step+1)
             for train_data in train_dataloader:
                 step += 1
                 model.train()
@@ -164,6 +175,13 @@ class FineTuningTrainer(PreTrainTrainer):
                         round(interval_acc, 4), round(interval_f1, 4), round(elapsed_train,2))
                     tb_writer.add_scalar('elapsed/train', elapsed_train, step)
                     tb_writer.add_scalar('learning_rate', optim.param_groups[0]["lr"], step)
+                    mlflow.log_metrics(
+                        {
+                            'elapsed/train': elapsed_train,
+                            'learning_rate': optim.param_groups[0]["lr"],
+                        },
+                        step
+                    )
                     elapsed_train = 0
                     train_interval_loss = .0
                     train_interval_acc = .0
@@ -171,6 +189,14 @@ class FineTuningTrainer(PreTrainTrainer):
             tb_writer.add_scalar('Loss/train', train_epoch_loss/len(train_dataloader), step)
             tb_writer.add_scalar('Acc/train', train_epoch_acc/len(train_dataloader), step)
             tb_writer.add_scalar('F1/train', train_epoch_f1/len(train_dataloader), step)
+            mlflow.log_metrics(
+                {
+                    'Loss/train': train_epoch_loss/len(train_dataloader),
+                    'Acc/train': train_epoch_acc/len(train_dataloader),
+                    'F1/train': train_epoch_f1/len(train_dataloader),
+                },
+                step
+            )
             train_epoch_loss = train_epoch_acc = train_epoch_f1 = .0
 
             # save checkpoint and validate.
@@ -191,15 +217,34 @@ class FineTuningTrainer(PreTrainTrainer):
                     tb_writer.add_scalar('Loss/valid', metrics['loss'], step)
                     tb_writer.add_scalar('Acc/valid', metrics['acc'], step)
                     tb_writer.add_scalar('F1/valid', metrics['f1'], step)
+                    mlflow.log_metrics(
+                        {
+                            'elapsed/valid': elapsed_valid,
+                            'Loss/valid': metrics['loss'],
+                            'Acc/valid': metrics['acc'],
+                            'F1/valid': metrics['f1'],
+                        },
+                        step
+                    )
                     get_logger().info(
                         '%d/%d validation finished. loss: %7.4f, acc: %7.4f, f1: %7.4f, elapsed: %.2fs',
                         current_epoch, step, round(metrics['loss'], 4), round(metrics['acc'], 4),
                         round(metrics['f1'], 4), round(elapsed_valid, 2))
 
+                    if best_val_acc < metrics['acc']:
+                        best_val_acc = metrics['acc']
+                        mlflow.pytorch.log_model(pytorch_model=origin_model, artifact_path='best_val_acc_model')
+                        get_logger().info('best acc %f model is saved.', best_val_acc)
+                    if best_val_f1 < metrics['f1']:
+                        best_val_f1 = metrics['f1']
+                        mlflow.pytorch.log_model(pytorch_model=origin_model, artifact_path='best_val_f1_model')
+                        get_logger().info('best f1 %f model is saved.', best_val_f1)
+
                     if train_dataloader is None:
                         break
 
             tb_writer.add_scalar('epoch', current_epoch, step)
+            mlflow.log_metric('epoch', current_epoch, step)
             get_logger().info('%s/%s Training a epoch finished.', current_epoch, step)
 
         save_checkpoint(origin_model, os.path.join(self.model_dir, 'checkpoint.pt'),

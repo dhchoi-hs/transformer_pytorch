@@ -1,10 +1,15 @@
+# mlflow setup
+tracking_uri: http://127.0.0.1:8080
+experiment_name: BERT_fine_tuning
+run_name: convf100_kernel345_wd0.1_dropout0.5
+
 # general
-cuda_index: 0
-epoch: null
+cuda_index: 1
+epoch: 30
 compile_model: false
 
 # saving model files
-keep_last_models: 10
+keep_last_models: 15
 
 # hyperparameters
 unfreeze_last_layers: 1
@@ -17,13 +22,13 @@ lr_scheduler_kwargs:
   warmup_epoch: 0
 conv_filters: 100
 kernel_sizes: [3, 4, 5]
-weight_decay: 0
-p_dropout: 0.0
+weight_decay: 0.1
+p_dropout: 0.5
 seq_len: 146
 
 # dataset
 shuffle_dataset_on_load: true
-train_dataset_file: /data/corpus/tweet_disaster/parsed/train_6852.txt
-train_dataset_label_file: /data/corpus/tweet_disaster/parsed/train_6852_label.txt
-valid_dataset_file: /data/corpus/tweet_disaster/parsed/val_761.txt
-valid_dataset_label_file: /data/corpus/tweet_disaster/parsed/val_761_label.txt
+train_dataset_file: /data/corpus/tweet_disaster/parsed/PILE_15k_vocab/9:1/BPE_char_train_6852.txt
+train_dataset_label_file: /data/corpus/tweet_disaster/parsed/PILE_15k_vocab/9:1/train_6852_label.txt
+valid_dataset_file: /data/corpus/tweet_disaster/parsed/PILE_15k_vocab/9:1/BPE_char_valid_761.txt
+valid_dataset_label_file: /data/corpus/tweet_disaster/parsed/PILE_15k_vocab/9:1/valid_761_label.txt

@@ -5,6 +5,9 @@ import yaml
 
 @dataclass()
 class FineTuningConfigData:
+    tracking_uri: str
+    experiment_name: str
+    run_name: str
     keep_last_models: int
     cuda_index: Union[int, None]
     compile_model: bool
