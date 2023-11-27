@@ -11,7 +11,7 @@ from itertools import count
 from datetime import datetime
 import torch
 from torch.utils.tensorboard import SummaryWriter
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from hs_aiteam_pkgs.util.logger import init_logger, get_logger
 from hs_aiteam_pkgs.util.signal_handler import SigTermException, catch_kill_signal
 from hs_aiteam_pkgs.model.lr_scheduler import create_lr_scheduler
@@ -163,31 +163,35 @@ def main(_pre_trained_config, pre_trained_model_file, _fine_tuning_config, _mode
         fine_tuning_config.train_dataset_file,
         fine_tuning_config.train_dataset_label_file,
         vocab, fine_tuning_config.seq_len)
-    train_dataloader = DataLoader(
-        dataset, fine_tuning_config.batch_size, fine_tuning_config.shuffle_dataset_on_load,
+    dataloader = DataLoader(
+        dataset, fine_tuning_config.batch_size,
+        fine_tuning_config.shuffle_dataset_on_load,
         collate_fn=collate_fn,)
 
-    dataset = tweet_disaster_dataset.TweetDisasterDataset(
-        fine_tuning_config.valid_dataset_file,
-        fine_tuning_config.valid_dataset_label_file,
-        vocab, fine_tuning_config.seq_len)
-    valid_dataloader = DataLoader(
-        dataset, fine_tuning_config.batch_size, fine_tuning_config.shuffle_dataset_on_load,
-        collate_fn=collate_fn,)
+    dataset_text = ''
+    if dataloader:
+        iters = len(dataloader)
+        dataset_text += f'trains: {len(dataloader.dataset)}, steps per epoch: {iters} '
+    get_logger().info('Dataset loaded. %s', dataset_text)
+    del dataloader
 
-    datasets = ''
-    if train_dataloader:
-        iters = len(train_dataloader)
-        datasets += f'trains: {len(train_dataloader.dataset)}, steps per epoch: {iters} '
-    if valid_dataloader:
-        datasets += f'valids: {len(valid_dataloader.dataset)}, '\
-            f'steps per epoch: {len(valid_dataloader)}'
-    get_logger().info('Dataset loaded. %s', datasets)
+    o = tweet_disaster_dataset.KFold(5, dataset)
 
-    purge_step = None if not resume else step
+    for train_indices, valid_indices in o:
+        train_dataloader = DataLoader(
+            Subset(dataset, train_indices), fine_tuning_config.batch_size,
+            fine_tuning_config.shuffle_dataset_on_load, collate_fn=collate_fn)
+        valid_dataloader = DataLoader(
+            Subset(dataset, valid_indices), fine_tuning_config.batch_size,
+            fine_tuning_config.shuffle_dataset_on_load, collate_fn=collate_fn)
+        for t in train_dataloader:
+            print(t)
+        for t in valid_dataloader:
+            print(t)
+
+    purge_step = None if not _resume else step
     sw = SummaryWriter(_model_dir, purge_step=purge_step)
 
-    sleep_between_step = .0
     train_loss = train_acc = val_loss = val_acc = .0
     train_interval_loss = train_interval_acc = .0
     logging_interval = 20
@@ -242,7 +246,7 @@ def main(_pre_trained_config, pre_trained_model_file, _fine_tuning_config, _mode
                     with torch.no_grad():
                         val_loss, val_acc = run_epoch(
                             valid_dataloader, model, loss_fn, None, False,
-                            sleep_between_step, device, True)
+                            device, True)
                     elapsed_valid = time.time() - valid_started
                     sw.add_scalar('elapsed/valid', elapsed_valid, step)
                     sw.add_scalar('Loss/valid', val_loss, step)

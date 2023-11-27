@@ -273,11 +273,12 @@ def main(
         vocab, fine_tuning_config.seq_len)
 
     config = {
-        "unfreeze_last_layers": tune.grid_search([3, 99]),
+        "unfreeze_last_layers": tune.grid_search([0, 1]),
+        "remove_last_layers": tune.grid_search([1, 2]),
         "learning_rate": tune.grid_search([1e-4, 1e-5]),
-        'conv_filters': tune.grid_search([100, 200, 300]),
-        'kernel_sizes': tune.grid_search([[3, 4, 5], [4, 5, 6, 7]]),
-        'weight_decay': tune.grid_search([0, 0.1, 0.3]),
+        'conv_filters': tune.grid_search([100]),
+        'kernel_sizes': tune.grid_search([[3, 4, 5]]),
+        'weight_decay': tune.grid_search([0, 0.1, 0.2]),
         'p_dropout': tune.grid_search([0.2, 0.5]),
     }
     train_func = tune.with_resources(
