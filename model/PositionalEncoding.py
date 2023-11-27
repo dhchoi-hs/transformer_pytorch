@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 import os
-print(os.path.abspath(os.path.curdir))
 from model.utils.Dropout import Dropout
 
 
