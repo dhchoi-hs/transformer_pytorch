@@ -2,11 +2,16 @@
 * using mlflow api from tracking to serving
 
 ## run mlflow server
+* install mlflow
+    ```bash
+    pip install mlflow
+    ```
+
 * run mlflow server in mlflow data directory.
-```bash
-cd mlflow_data/
-mlflow server --host 0.0.0.0 --port 5000
-```
+    ```bash
+    cd mlflow_data/
+    mlflow server --host 0.0.0.0 --port 5000
+    ```
 
 ## model tracking
 1. set tracking uri and experiment name.
@@ -17,7 +22,7 @@ mlflow server --host 0.0.0.0 --port 5000
     mlflow.set_experiment('BERT_pretrain')
     ```
 
-2. start mlflow run. 
+2. run mlflow with context manager. 
     ```python
     with mlflow.start_run(run_name='vocab10k'):
         train_loop()
@@ -68,12 +73,14 @@ mlflow server --host 0.0.0.0 --port 5000
 ## log predict model
 
 ```python
+import os
 import json
 import mlflow
 from mlflow.pyfunc import PythonModel
 import torch
-from kaggle_submisstion.preprocess_tweetD import preprocess_text  # file loaded from code_path argument in mlflow.pyfunc.log_model()
-from kaggle_submisstion.bpe_codec_char import encode_bpe_char  # file loaded from code_path argument in mlflow.pyfunc.log_model()
+from bpe.preprocess_tweetD import preprocess_text
+from bpe.bpe_codec_char import encode_bpe_char
+from BPE_char_dict_PILE_15589 import vocab
 
 
 class PredictModel(PythonModel):
@@ -84,30 +91,38 @@ class PredictModel(PythonModel):
         self.model.to(self.device)
         self.model.eval()
 
-        vocab_file = 'kaggle_submisstion/BPE_char_dict_PILE_15589.json'  # file loaded from code_path argument in mlflow.pyfunc.log_model()
-        with open(vocab_file, 'rt', encoding='utf8') as f:
-            self.vocab = json.load(f)
+        # vocab_file = 'bpe/BPE_char_dict_PILE_15589.json'
+        # with open(vocab_file, 'rt', encoding='utf8') as f:
+        #     self.vocab = json.load(f)
 
     def predict(self, context, model_input, params=None):
         input_text = str(model_input['text'])
-        tokens = encode_bpe_char(self.vocab, preprocess_text, input_text)
+        tokens = encode_bpe_char(vocab, preprocess_text, input_text)
         tokens = torch.tensor(tokens, dtype=torch.long, device=self.device)
         with torch.no_grad():
-            output = self.model(tokens.unsqueeze(0))
+            o = self.model(tokens.unsqueeze(0))
 
-        return output.cpu().numpy()
+        return o.cpu().numpy()
 
 
 mlflow.set_tracking_uri('http://127.0.0.1:5000')
 
+
 with mlflow.start_run(run_id='b86642ad8b1b425fa35bbd43ba986104') as run:  # get run_id from web page.
     mlflow.pyfunc.log_model(
         artifact_path='finetuning_predict',  # save artifact path
-        artifacts={
-            'best_val_acc_model': mlflow.get_artifact_uri('best_val_acc_model')  # key/value used in context of PredictModel
+        artifacts={  # key/value used in context of PredictModel
+            'best_val_acc_model': mlflow.get_artifact_uri('best_val_acc_model')
         },
         python_model=PredictModel(),
-        code_path=['/home/dhchoi/projects/transformer_pytorch2/kaggle_submisstion']  # all files in directory are uploaded to load on serving.
+        code_path=[  # all files in directory are uploaded to load on serving.
+            os.path.join(os.path.dirname(__file__), '../components'),
+            os.path.join(os.path.dirname(__file__), '../models'),
+            os.path.join(os.path.dirname(__file__), '../checkpoint.py'),
+            os.path.join(os.path.dirname(__file__), '../configuration.py'),
+            os.path.join(os.path.dirname(__file__), '../configuration_fine_tuning.py'),
+            os.path.join(os.path.dirname(__file__), '../dataset_loader'),
+            os.path.join(os.path.dirname(__file__), 'bpe')]
     )
 ```
 
