@@ -29,7 +29,7 @@
     ```
     * or
     ```python
-    mlflow.start_run()
+    mlflow.start_run(run_name='vocab10k')
     train_loop()
     mlflow.end_run()
     ```
