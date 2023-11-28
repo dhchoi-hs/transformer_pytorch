@@ -37,7 +37,7 @@
 3. log parameters.
     ```python
     params = {
-        'batch_size': 128
+        'batch_size': 128,
         'layers': 6,
         'd_model': 1024,
         'heads': 8,
