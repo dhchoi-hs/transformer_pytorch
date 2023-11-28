@@ -122,7 +122,9 @@ with mlflow.start_run(run_id='b86642ad8b1b425fa35bbd43ba986104') as run:  # get 
             os.path.join(os.path.dirname(__file__), '../configuration.py'),
             os.path.join(os.path.dirname(__file__), '../configuration_fine_tuning.py'),
             os.path.join(os.path.dirname(__file__), '../dataset_loader'),
-            os.path.join(os.path.dirname(__file__), 'bpe')]
+            os.path.join(os.path.dirname(__file__), 'bpe'),
+            os.path.join(os.path.dirname(__file__), 'BPE_char_dict_PILE_15589.py')]
+
     )
 ```
 
